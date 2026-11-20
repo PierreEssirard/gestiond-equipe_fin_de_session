@@ -144,9 +144,9 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES } from './config.js';
-import { connect } from './net.js';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js';
+import { GAME, PROFS, LINES } from './config.js?v=4';
+import { connect } from './net.js?v=4';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=4';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
