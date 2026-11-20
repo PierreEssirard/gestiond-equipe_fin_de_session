@@ -5,7 +5,13 @@
    2) Modifiez librement les questions et les répliques des profs.
    ===================================================================== */
 
-export const FIREBASE = null;
+export const FIREBASE = {
+  apiKey: "AIzaSyC-QuYAp71_j0g5mWNRL7qMLRo7kkeHZ24",
+  authDomain: "gin761-jeu.firebaseapp.com",
+  databaseURL: "https://gin761-jeu-default-rtdb.firebaseio.com",
+  projectId: "gin761-jeu",
+  appId: "1:945359943688:web:74eb17f23a1b332297b9bd"
+};
 /* Exemple :
 export const FIREBASE = {
   apiKey: "AIza...",
