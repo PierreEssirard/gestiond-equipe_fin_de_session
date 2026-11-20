@@ -20,9 +20,9 @@ html,body{height:100%;margin:0;background:#0c1113;color:var(--ink);font:500 18px
 #stage{position:fixed;inset:0;width:100%;height:100%;display:block}
 .glass{background:var(--glass);border:1px solid var(--edge);border-radius:14px;backdrop-filter:blur(6px)}
 .cond{font-family:"Barlow Condensed",Barlow,sans-serif}
-#brand{position:fixed;left:24px;top:20px;padding:12px 18px}
-#brand b{display:block;font:800 clamp(24px,2.3vw,40px)/1 "Barlow Condensed",sans-serif;letter-spacing:.01em}
-#brand span{color:var(--mut);font-weight:600;font-size:clamp(13px,1vw,17px)}
+#brand{position:fixed;left:20px;top:16px;padding:8px 14px}
+#brand b{display:block;font:800 clamp(18px,1.5vw,26px)/1 "Barlow Condensed",sans-serif;letter-spacing:.01em}
+#brand span{color:var(--mut);font-weight:600;font-size:clamp(12px,.85vw,14px)}
 #hud{position:fixed;right:24px;top:20px;display:flex;gap:10px;align-items:stretch}
 .tm{display:grid;grid-template-columns:auto auto;gap:2px 14px;align-items:center;padding:8px 16px 8px 12px;border-left:6px solid var(--c)}
 .tm b{grid-row:span 2;font:800 clamp(34px,3.2vw,58px)/1 "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums;min-width:1.6em;text-align:right}
@@ -107,7 +107,9 @@ body.withjoin #lower{right:340px}
 #banner p{margin:.3em 0 0;font:600 clamp(18px,1.7vw,28px)/1.2 Barlow,sans-serif;text-shadow:0 2px 12px rgba(0,0,0,.8)}
 #ctrl{position:fixed;left:24px;bottom:24px;display:flex;gap:6px;flex-wrap:wrap;opacity:.15;transition:opacity .3s;z-index:5}
 #ctrl:hover,#ctrl:focus-within,body.lobby #ctrl{opacity:1}
-body:not(.lobby) #ctrl{bottom:auto;top:96px}
+body:not(.lobby) #ctrl{bottom:auto;top:74px;left:20px;gap:4px}
+body:not(.lobby) #ctrl button{min-height:28px;padding:4px 9px;font-size:12px;border-radius:7px}
+body:not(.lobby) #join{display:none}
 button{font:700 15px/1 Barlow,sans-serif;min-height:40px;padding:8px 14px;border-radius:9px;border:1px solid var(--edge);background:rgba(13,17,19,.9);color:var(--ink);cursor:pointer}
 button.main{background:var(--acc);color:#111;border-color:var(--acc)}
 button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
@@ -144,9 +146,9 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES } from './config.js?v=4';
-import { connect } from './net.js?v=4';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=4';
+import { GAME, PROFS, LINES } from './config.js?v=5';
+import { connect } from './net.js?v=5';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=5';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -243,7 +245,7 @@ function go(i) {
 function enter() {
   const st = cur();
   document.body.classList.toggle('lobby', st.k === 'lobby');
-  document.body.classList.toggle('withjoin', st.k !== 'lobby' && st.k !== 'final');
+  document.body.classList.remove('withjoin');
   R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
   R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
   banner('');
@@ -468,7 +470,7 @@ function render() {
   $('bNext').textContent = st.k === 'lobby' ? 'Commencer ▶' : st.k === 'q' && S.phase !== 'reveal' ? 'Révéler ▶' : st.k === 'final' ? 'Fin' : 'Suivant ▶';
   $('brandSub').textContent = st.ai !== undefined ? `Activité ${st.ai + 1} sur ${GAME.acts.length} · ${act().name}` : 'Équipe Charlie · GIN761';
   $('ring').classList.toggle('on', !!S.timer || S.phase === 'closed');
-  renderBoard(st.k === 'intro' || (st.k === 'q' && S.phase === 'reveal') || st.k === 'final');
+  renderBoard(st.k === 'final');
   if (st.k === 'lobby') { renderLobby(); lo.classList.remove('on'); return setLowerH(); }
   let h = '';
   if (st.k === 'intro') { const a = act(); h = `<div class="kick">Activité ${st.ai + 1} sur ${GAME.acts.length} · ${esc(a.bloc)}</div><h2>${esc(a.name)}</h2><p class="rule">${esc(a.rule)}</p>`; }
