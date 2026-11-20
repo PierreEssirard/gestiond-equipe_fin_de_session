@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0c1113">
+<title>Choc des cultures · joueur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE télécommande de jeu télé : rapide, gros boutons, zéro friction
+   IDEA la manette du plateau, aux couleurs de votre équipe
+   PICTURE les quatre grands boutons de réponse qui remplissent l'écran
+   COLOUR graphite, couleur d'équipe en bandeau, jaune signal, quatre couleurs de coins
+   TYPE Barlow Condensed (titres, chiffres) + Barlow (texte)
+   LAYOUT une colonne : bandeau équipe, question, boutons jusqu'en bas */
+:root{color-scheme:dark;--bg:#0c1113;--card:#161d21;--edge:rgba(255,255,255,.12);--ink:#f3f5f6;--mut:#a3afb5;--acc:#ffd34d;--ok:#2fb36a;--ko:#d8453a;--tc:#555}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:500 17px/1.4 Barlow,system-ui,sans-serif;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--tc);color:#fff}
+header b{font:800 22px/1 "Barlow Condensed",sans-serif;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header span{font:700 15px/1.1 Barlow,sans-serif;text-align:right}
+header strong{display:block;font:800 24px/1 "Barlow Condensed",sans-serif}
+main{flex:1;display:flex;flex-direction:column;gap:14px;padding:18px 16px 20px;overflow:auto}
+h1{margin:0;font:800 34px/1.02 "Barlow Condensed",sans-serif;text-wrap:balance}
+h2{margin:0;font:700 25px/1.12 "Barlow Condensed",sans-serif;text-wrap:balance}
+.kick{color:var(--acc);font-weight:700;font-size:15px}
+p{margin:0}.mut{color:var(--mut)}
+input[type=text]{width:100%;font:600 20px Barlow,sans-serif;padding:14px;border-radius:12px;border:2px solid var(--edge);background:var(--card);color:var(--ink)}
+input[type=text]:focus{outline:none;border-color:var(--acc)}
+button{font:700 19px/1.15 Barlow,sans-serif;min-height:56px;padding:12px 16px;border-radius:14px;border:0;background:var(--acc);color:#111;cursor:pointer;touch-action:manipulation}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.45}
+.grid{display:grid;gap:10px;flex:1;grid-template-rows:repeat(4,minmax(64px,1fr))}
+.ans{display:grid;grid-template-columns:52px minmax(0,1fr);gap:12px;align-items:center;text-align:left;background:var(--c);color:#111;font-size:18px;padding:10px 14px}
+.ans b{display:grid;place-items:center;width:52px;height:52px;border-radius:10px;background:rgba(0,0,0,.18);font:800 32px/1 "Barlow Condensed",sans-serif}
+.vf{display:grid;grid-template-rows:1fr 1fr;gap:12px;flex:1}
+.vf button{font:800 44px/1 "Barlow Condensed",sans-serif}
+.vf button small{display:block;font:600 16px Barlow,sans-serif;margin-top:6px}
+.vf .t{background:var(--ok);color:#fff}.vf .f{background:var(--ko);color:#fff}
+.slider{display:flex;flex-direction:column;gap:16px;flex:1;justify-content:center}
+.slider output{font:800 96px/1 "Barlow Condensed",sans-serif;text-align:center;color:var(--acc);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
+.scale{display:flex;justify-content:space-between;color:var(--mut);font-weight:700}
+.state{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:12px;padding:12px}
+.state .mega{font:800 76px/1 "Barlow Condensed",sans-serif}
+.pill{display:inline-block;padding:6px 12px;border-radius:99px;background:var(--card);border:1px solid var(--edge);font-weight:700}
+.why{background:var(--card);border-left:4px solid var(--acc);padding:12px 14px;border-radius:0 12px 12px 0;text-align:left}
+.ok{color:var(--ok)}.ko{color:var(--ko)}
+.team{width:100%;padding:22px;border-radius:16px;background:var(--tc);color:#fff;text-align:center}
+.team strong{display:block;font:800 52px/1 "Barlow Condensed",sans-serif}
+.foot{color:var(--mut);font-size:13px;text-align:center;padding:0 16px 10px}
+</style>
+</head>
+<body>
+<header id="hd"><b>Choc des cultures</b><span id="me"></span></header>
+<main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
+<div class="foot" id="ft"></div>
+<script type="module">
+import { GAME } from './config.js';
+import { connect } from './net.js';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const m = $('m');
+const params = new URLSearchParams(location.search);
+let ROOM = (params.get('r') || '').toUpperCase().replace(/[^A-Z]/g, '');
+
+if (!ROOM) {
+  m.innerHTML = `<h1>Rejoindre la partie</h1><p class="mut">Entrez le code affiché à l’écran.</p><input type="text" id="code" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD"><button id="go">Continuer</button>`;
+  $('go').onclick = () => { const c = $('code').value.toUpperCase().replace(/[^A-Z]/g, ''); if (c.length === 4) location.search = '?r=' + c; };
+} else start();
+
+async function start() {
+  $('ft').textContent = 'Partie ' + ROOM;
+  const net = await connect(ROOM);
+  let pid; try { pid = localStorage.getItem('choc:pid:' + ROOM); } catch (e) { }
+  if (!pid) { pid = 'p' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('choc:pid:' + ROOM, pid); } catch (e) { } }
+  let me = null, players = {}, state = null, sent = {};
+  try { sent = JSON.parse(localStorage.getItem('choc:sent:' + ROOM) || '{}'); } catch (e) { }
+  const saveSent = () => { try { localStorage.setItem('choc:sent:' + ROOM, JSON.stringify(sent)); } catch (e) { } };
+  let lineVal = 50, joining = false;
+
+  net.onPlayer(pid, v => { me = v; render(); });
+  net.onPlayers(v => { players = v || {}; renderHead(); });
+  net.onState(v => { if (state && v && state.step !== v.step) lineVal = 50; const was = state && state.phase; state = v; if (v && v.phase === 'reveal' && was !== 'reveal') try { navigator.vibrate && navigator.vibrate(80); } catch (e) { } render(); });
+
+  const team = () => (me && me.team) ? 1 : 0;
+  function rank() {
+    const L = Object.values(players).filter(p => p && p.name).map(p => p.score || 0).sort((a, b) => b - a);
+    return { r: L.indexOf((me && me.score) || 0) + 1, n: L.length };
+  }
+  function renderHead() {
+    if (!me || !me.name) { document.body.style.setProperty('--tc', '#1c2429'); $('me').innerHTML = ''; return; }
+    const T = GAME.teams[team()]; document.body.style.setProperty('--tc', T.color);
+    const { r, n } = rank();
+    $('hd').querySelector('b').textContent = me.name;
+    $('me').innerHTML = `${esc(T.name)} · ${r}<sup>e</sup>/${n}<strong>${me.score || 0} pts</strong>`;
+  }
+
+  function joinForm() {
+    m.innerHTML = `<h1>Choc des cultures</h1><p class="mut">Le jeu de l’équipe Charlie. Entrez votre prénom pour rejoindre la partie.</p>
+      <input type="text" id="nm" maxlength="18" autocomplete="given-name" placeholder="Votre prénom"><button id="jn">Rejoindre</button>`;
+    const go = async () => {
+      const name = $('nm').value.trim().replace(/\s+/g, ' ').slice(0, 18); if (!name || joining) return; joining = true;
+      const c = [0, 0]; Object.values(players).forEach(p => { if (p && p.name) c[p.team ? 1 : 0]++; });
+      await net.join(pid, { name, team: c[0] <= c[1] ? 0 : 1, score: 0 });
+      joining = false;
+    };
+    $('jn').onclick = go; $('nm').onkeydown = e => { if (e.key === 'Enter') go(); };
+  }
+
+  function send(v) {
+    if (!state || state.kind !== 'q' || state.phase !== 'open' || sent[state.key] !== undefined) return;
+    sent[state.key] = v; saveSent(); net.answer(state.key, pid, v); try { navigator.vibrate && navigator.vibrate(30); } catch (e) { } render();
+  }
+  const label = v => { const q = state.q; if (q.type === 'line') return v; if (q.type === 'standsit') return v ? 'Vrai' : 'Faux'; return GAME.corners[v].l + ' · ' + q.opts[v]; };
+
+  function render() {
+    renderHead();
+    if (!me || !me.name) { if (!$('nm')) joinForm(); return; }
+    const s = state, T = GAME.teams[team()];
+    if (!s || s.kind === 'lobby') { m.innerHTML = `<div class="state"><div class="team"><span>Vous jouez pour</span><strong>${esc(T.name)}</strong><span>${esc(T.tag)}</span></div><h2>Regardez l’écran, la partie va commencer.</h2><p class="mut">Gardez cette page ouverte.</p></div>`; return; }
+    if (s.kind === 'intro') { m.innerHTML = `<div class="kick">Activité ${s.act.i + 1} sur ${s.act.n}</div><h1>${esc(s.act.name)}</h1><p>${esc(s.act.rule)}</p><div class="state"><span class="pill">Préparez-vous</span></div>`; return; }
+    if (s.kind === 'final') {
+      const { r, n } = rank();
+      m.innerHTML = `<div class="state"><span class="kick">Résultat final</span><div class="mega">${r}<sup style="font-size:.4em">e</sup></div><h2>sur ${n} joueurs · ${me.score || 0} points</h2><div class="team"><span>Votre équipe</span><strong>${esc(T.name)}</strong></div><p class="mut">Merci d’avoir joué ! Regardez l’écran pour le résultat des équipes.</p></div>`; return;
+    }
+    const q = s.q, mine = sent[s.key];
+    let h = `<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div><h2>${esc(q.text)}</h2>`;
+    if (s.phase === 'scene') { m.innerHTML = `<div class="kick">${esc(s.act.name)}</div><div class="state"><span class="pill">Scène</span><h2>Regardez la scène à l’écran…</h2><p class="mut">La question arrive juste après. Soyez rapide !</p></div>`; return; }
+    if (s.phase === 'reveal') {
+      const L = me.last && me.last.key === s.key ? me.last : null, R = s.reveal || {};
+      const good = L ? L.ok : false;
+      const ans = q.type === 'line' ? R.val : q.type === 'standsit' ? (R.ok ? 'Vrai' : 'Faux') : GAME.corners[R.ok].l + ' · ' + q.opts[R.ok];
+      h = `<div class="kick">${esc(s.act.name)}</div><div class="state"><div class="mega ${mine === undefined ? '' : good ? 'ok' : 'ko'}">${mine === undefined ? 'Pas de réponse' : good ? 'Bien joué' : 'Raté'}</div>
+        <h2>${L ? '+' + L.pts + ' points' : 'Calcul des points…'}</h2>${mine !== undefined ? `<p class="mut">Votre réponse : ${esc(label(mine))}</p>` : ''}
+        ${q.type === 'fusion' && s.result ? `<span class="pill">${s.result.fusion ? 'Fusion réussie' : 'Fusion ratée'}</span>` : ''}
+        <div class="why"><b>${q.type === 'line' ? 'Score réel' : 'Bonne réponse'} : ${esc(ans)}.</b> ${esc(R.why || '')}</div></div>`;
+      m.innerHTML = h; return;
+    }
+    if (mine !== undefined || s.phase === 'closed') {
+      h += `<div class="state"><span class="pill">${mine !== undefined ? 'Réponse envoyée' : 'Temps écoulé'}</span>${mine !== undefined ? `<h2>${esc(label(mine))}</h2>` : ''}<p class="mut">${q.type === 'fusion' ? 'Convainquez votre équipe… et l’autre !' : 'Regardez votre avatar dans la salle.'}</p></div>`;
+      m.innerHTML = h; return;
+    }
+    if (q.opts) {
+      h += (q.type === 'fusion' ? '<p class="mut">La fusion réussit seulement si les deux équipes votent pareil. Parlez-vous !</p>' : '') +
+        `<div class="grid">${q.opts.map((o, i) => `<button class="ans" data-v="${i}" style="--c:${GAME.corners[i].color}"><b>${GAME.corners[i].l}</b><span>${esc(o)}</span></button>`).join('')}</div>`;
+    } else if (q.type === 'standsit') {
+      h += `<div class="vf"><button class="t" data-v="true">VRAI<small>votre avatar se lève</small></button><button class="f" data-v="false">FAUX<small>votre avatar reste assis</small></button></div>`;
+    } else if (q.type === 'line') {
+      h += `<div class="slider"><output id="lv">${lineVal}</output><input type="range" id="lr" min="0" max="100" step="1" value="${lineVal}"><div class="scale"><span>0</span><span>50</span><span>100</span></div><button id="lok">Valider ${lineVal}</button></div>`;
+    }
+    m.innerHTML = h;
+    m.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { const v = b.dataset.v; send(v === 'true' ? true : v === 'false' ? false : +v); });
+    if ($('lr')) { $('lr').oninput = e => { lineVal = +e.target.value; $('lv').textContent = lineVal; $('lok').textContent = 'Valider ' + lineVal; }; $('lok').onclick = () => send(lineVal); }
+  }
+  render();
+}
+</script>
+</body>
+</html>

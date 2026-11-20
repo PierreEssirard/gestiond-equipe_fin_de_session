@@ -1,0 +1,141 @@
+/* =====================================================================
+   CHOC DES CULTURES — configuration
+   1) Collez votre configuration Firebase ci-dessous (voir README.md).
+      Laissez null pour le mode répétition (joueurs fictifs, sans réseau).
+   2) Modifiez librement les questions et les répliques des profs.
+   ===================================================================== */
+
+export const FIREBASE = null;
+/* Exemple :
+export const FIREBASE = {
+  apiKey: "AIza...",
+  authDomain: "choc-des-cultures.firebaseapp.com",
+  databaseURL: "https://choc-des-cultures-default-rtdb.firebaseio.com",
+  projectId: "choc-des-cultures",
+  appId: "1:...:web:..."
+};
+*/
+
+export const GAME = {
+  title: 'Choc des cultures',
+  subtitle: 'Équipe Charlie · GIN761 · Management interculturel (O. Meier)',
+  minutes: 10,
+  teams: [
+    { name: 'Stuttgart', tag: 'Daimler-Benz', color: '#3d74d6' },
+    { name: 'Detroit', tag: 'Chrysler', color: '#d8453a' }
+  ],
+  corners: [
+    { l: 'A', color: '#e8b730' },
+    { l: 'B', color: '#2fb3a1' },
+    { l: 'C', color: '#e06a9a' },
+    { l: 'D', color: '#ee8434' }
+  ],
+  acts: [
+    { type: 'corners', name: 'Les 4 coins', bloc: 'Bloc A · Culture et styles de management',
+      rule: 'Répondez sur votre téléphone : votre avatar se déplace dans le coin choisi. Vitesse et justesse rapportent des points.',
+      qs: [
+        { q: 'Selon Hofstede, quelle dimension mesure jusqu’où les moins puissants acceptent une répartition inégale du pouvoir ?',
+          opts: ['L’individualisme', 'La distance hiérarchique', 'Le contrôle de l’incertitude', 'La masculinité'], ok: 1, t: 20,
+          why: 'Distance hiérarchique : élevée en France (68), plus faible en Allemagne (35) et aux États-Unis (40).' },
+        { q: 'Quelle culture est la plus « profonde », apprise tôt sous forme de valeurs ?',
+          opts: ['La culture nationale', 'La culture d’entreprise', 'La culture de métier', 'La culture d’équipe'], ok: 0, t: 20,
+          why: 'La culture nationale repose sur des valeurs acquises dès l’enfance ; la culture d’entreprise, surtout sur des pratiques.' }
+      ] },
+    { type: 'line', name: 'La ligne humaine', bloc: 'Bloc A · Le modèle d’Hofstede',
+      rule: 'Estimez le score sur votre téléphone, de 0 à 100. Votre avatar se place sur la ligne. Plus vous êtes proche, plus vous gagnez.',
+      qs: [
+        { q: 'Score de la France en contrôle de l’incertitude ?', val: 86, t: 25,
+          why: '86 sur 100, un des plus élevés d’Europe. Allemagne : 65, États-Unis : 46 (scores classiques d’Hofstede).' },
+        { q: 'Score des États-Unis en individualisme ?', val: 91, t: 25,
+          why: '91 sur 100, le plus haut du classement classique d’Hofstede. France : 71, Allemagne : 67.' }
+      ] },
+    { type: 'standsit', name: 'Vrai ou faux', bloc: 'Bloc B · Diversité et conflits culturels',
+      rule: 'Vrai : votre avatar se lève. Faux : il reste assis. 15 secondes par affirmation.',
+      qs: [
+        { q: 'Une équipe multiculturelle est automatiquement plus performante qu’une équipe homogène.', ok: false, t: 15,
+          why: 'La diversité est une ressource et un risque. Mal gérée, l’équipe multiculturelle fait moins bien qu’une équipe homogène.' },
+        { q: 'L’ethnocentrisme, c’est juger les autres cultures avec les normes de la sienne.', ok: true, t: 15,
+          why: 'C’est une des erreurs classiques à l’origine des conflits culturels.' },
+        { q: 'Dans une culture à contexte fort, le message passe surtout par les mots dits explicitement.', ok: false, t: 15,
+          why: 'En contexte fort (E. T. Hall), le sens passe par l’implicite, la relation et le non-verbal.' }
+      ] },
+    { type: 'race', name: 'La course au tableau', bloc: 'Blocs C et D · Négociation et communication',
+      rule: 'Regardez la scène, puis répondez le plus vite possible. La première bonne réponse de chaque équipe court au tableau.',
+      qs: [
+        { scene: [['k', 'Guten Tag, Herr Johnson. Voici le dossier : quatre-vingts pages d’analyse.'], ['m', 'Appelle-moi Mike ! On lance le modèle vite, on corrigera en route.'], ['k', 'Sans plan validé ? C’est beaucoup trop risqué.'], ['m', 'Relax ! Le risque fait partie du jeu.']],
+          q: 'Quelle dimension d’Hofstede explique le mieux ce choc ?', opts: ['Le contrôle de l’incertitude', 'L’orientation long terme', 'La masculinité', 'L’indulgence'], ok: 0, t: 20,
+          why: 'Allemagne 65 contre États-Unis 46 : Klaus réduit l’incertitude par l’analyse et les règles, Mike la tolère.' },
+        { scene: [['m', 'Bon, on tranche maintenant : on garde mon plan.'], ['k', '…'], ['k', 'Il ne répond pas et attend la prochaine réunion.']],
+          q: 'Face à Mike, quel mode de Thomas-Kilmann Klaus adopte-t-il ?', opts: ['La compétition', 'La collaboration', 'L’évitement', 'L’accommodation'], ok: 2, t: 20,
+          why: 'L’évitement : ni ses intérêts ni ceux de Mike ne sont traités. Le conflit est reporté, pas réglé.' }
+      ] },
+    { type: 'fusion', name: 'La fusion', bloc: 'Cas fil rouge · Daimler-Chrysler',
+      rule: 'Tout le monde vote. La fusion réussit seulement si Stuttgart et Detroit choisissent la même réponse, et la bonne. Parlez-vous !',
+      qs: [
+        { q: 'Daimler-Chrysler : « fusion entre égaux » de 36 G$ en 1998, revendue 7,4 G$ en 2007. Quelle leçon en tirer ?',
+          opts: ['Le problème était seulement financier', 'L’intégration culturelle a été négligée', 'Les cultures nationales n’ont aucun effet', 'Il fallait fusionner encore plus vite'], ok: 1, t: 45,
+          why: 'Une culture formelle et hiérarchique, une autre informelle et rapide, jamais intégrées : ce n’était pas une fusion entre égaux.' }
+      ] }
+  ],
+  takeaways: [
+    'La culture ne disparaît pas dans une fusion : elle se gère.',
+    'La diversité devient une force quand on nomme les différences.',
+    'Équipe multiculturelle : clarifier les rôles et oser dire les vraies choses.'
+  ]
+};
+
+/* ---------- Les profs (apparence générique, pas des portraits) ---------- */
+export const PROFS = {
+  M: { name: 'Mélanie Cloutier', role: 'Professeure, GIN761', voice: 'f' },
+  P: { name: 'Philippe Joly', role: 'Professeur invité', voice: 'm' }
+};
+
+/* Répliques. M = Mélanie Cloutier, P = Philippe Joly.
+   great : ≥ 75 % de bonnes réponses · mid : 40 à 75 % · bad : < 40 % · none : personne n'a répondu */
+export const LINES = {
+  lobby: [
+    ['M', 'Scannez le code. Exceptionnellement, les cellulaires sont permis dans mon cours.'],
+    ['P', 'Envoye, sortez vos cellulaires ! Pis pas pour aller sur TikTok, tabarnak.']
+  ],
+  intro: {
+    corners: [['P', 'Les quatre coins. Choisissez bien votre coin, sont vilains étudiants.']],
+    line: [['M', 'Une estimation, ça se justifie. Pensez à ce qu’on a vu avec Hofstede.']],
+    standsit: [['P', 'Vrai ou faux. Debout ou assis. Même un vilain étudiant peut faire ça.']],
+    race: [['M', 'Observez bien la scène. Un conflit mal nommé est un conflit qui revient.']],
+    fusion: [['P', 'Dernière épreuve. Stuttgart et Detroit doivent s’entendre. Bonne chance, tabarnak.']]
+  },
+  great: [
+    ['M', 'Bravo. Là, je vois une équipe performante : confiance, engagement, résultats.'],
+    ['P', 'Tabarnak, ils ont étudié ! Qui leur a donné les réponses ?'],
+    ['M', 'Excellent. Vous êtes passés de la phase de formation à la performance en une seule question.'],
+    ['P', 'Sont vilains étudiants… mais là, je dois avouer, c’est pas pire pantoute.'],
+    ['M', 'Très bien. Je le note pour l’examen du 16 décembre.'],
+    ['P', 'Tabarnak, c’est presque trop beau. Je vérifie s’il y a de la triche.']
+  ],
+  mid: [
+    ['M', 'La moitié de la classe a compris. L’autre moitié, on en reparle en révision.'],
+    ['P', 'Sont vilains étudiants. La moitié dormait pendant la présentation, je l’ai vu.'],
+    ['M', 'Divisés comme une équipe en pleine phase de tempête. C’est normal, ça passe.'],
+    ['P', 'Tabarnak, on dirait une réunion sans ordre du jour.'],
+    ['M', 'Petite question pour vous : avez-vous osé dire les vraies choses à votre équipe ?']
+  ],
+  bad: [
+    ['P', 'Tabarnak ! Sont vilains étudiants !'],
+    ['P', 'Ben voyons donc. Sont vilains étudiants, je vous l’avais dit, Mélanie.'],
+    ['M', 'Hum. Je pense qu’on va relire le chapitre ensemble.'],
+    ['M', 'Ce n’est pas un échec, c’est un apprentissage. Au moins, la sécurité psychologique est là.'],
+    ['P', 'Tabarnak, même Daimler-Chrysler a fait mieux que ça.']
+  ],
+  none: [
+    ['P', 'Allô ? Y a quelqu’un ? Tabarnak, réveillez-vous !'],
+    ['M', 'Personne ? C’est un silence culturel, ça, ou un silence de fin de session ?']
+  ],
+  retort: {
+    P: ['Tabarnak.', 'Sont vilains étudiants.', 'Mouais. On verra à l’examen.', 'Pas pire. Pas pire.'],
+    M: ['Philippe, voyons…', 'Philippe, on se calme.', 'Il exagère. Un peu.', 'Ne l’écoutez pas, vous êtes formidables.']
+  },
+  raceWin: [['P', 'Regardez-moi ça courir ! Tabarnak, c’est les Jeux olympiques.']],
+  fusionOk: [['M', 'Fusion réussie. Mieux que Daimler-Chrysler : vous avez intégré vos cultures.'], ['P', 'Tabarnak. Je suis presque ému.']],
+  fusionKo: [['P', 'Fusion ratée ! Comme en 2007. Sont vilains étudiants.'], ['M', 'Deux cultures, deux réponses. C’est exactement le cas qu’on vient d’étudier.']],
+  final: [['M', 'Bravo à tous. Une belle démonstration de ce que la diversité apporte quand elle est bien gérée.'], ['P', 'Sont vilains étudiants… mais c’est mes vilains étudiants préférés. Tabarnak que je suis fier.']]
+};
