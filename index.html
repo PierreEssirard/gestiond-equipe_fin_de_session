@@ -105,10 +105,9 @@ body.withjoin #lower{right:340px}
 #banner.on{opacity:1}
 #banner h1{margin:0;font:800 clamp(56px,7vw,128px)/.95 "Barlow Condensed",sans-serif;text-shadow:0 4px 30px rgba(0,0,0,.6)}
 #banner p{margin:.3em 0 0;font:600 clamp(18px,1.7vw,28px)/1.2 Barlow,sans-serif;text-shadow:0 2px 12px rgba(0,0,0,.8)}
-#ctrl{position:fixed;left:24px;bottom:24px;display:flex;gap:6px;flex-wrap:wrap;opacity:.15;transition:opacity .3s;z-index:5}
+#ctrl{position:fixed;right:24px;bottom:24px;display:flex;opacity:.35;transition:opacity .3s;z-index:5}
 #ctrl:hover,#ctrl:focus-within,body.lobby #ctrl{opacity:1}
-body:not(.lobby) #ctrl{bottom:auto;top:74px;left:20px;gap:4px}
-body:not(.lobby) #ctrl button{min-height:28px;padding:4px 9px;font-size:12px;border-radius:7px}
+body:not(.lobby) #ctrl{bottom:auto;top:110px}
 body:not(.lobby) #join{display:none}
 button{font:700 15px/1 Barlow,sans-serif;min-height:40px;padding:8px 14px;border-radius:9px;border:1px solid var(--edge);background:rgba(13,17,19,.9);color:var(--ink);cursor:pointer}
 button.main{background:var(--acc);color:#111;border-color:var(--acc)}
@@ -135,20 +134,14 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <div id="banner"><h1 id="banH"></h1><p id="banP"></p></div>
 <div id="mode">Mode répétition (sans Firebase) · ajoutez des joueurs fictifs avec B</div>
 <nav id="ctrl">
-  <button id="bPrev" title="Étape précédente (←)">◀</button>
   <button id="bNext" class="main" title="Espace / → / télécommande">Commencer ▶</button>
-  <button id="bBots" title="Ajouter 12 joueurs fictifs (B)">+ Joueurs fictifs</button>
-  <button id="bSound" title="Voix des profs (S)">Voix : oui</button>
-  <button id="bFull" title="Plein écran (F)">Plein écran</button>
-  <button id="bQual" title="Qualité graphique (Q)">Qualité : haute</button>
-  <button id="bReset" title="Nouvelle partie">Nouvelle partie</button>
 </nav>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES } from './config.js?v=6';
-import { connect } from './net.js?v=6';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=6';
+import { GAME, PROFS, LINES } from './config.js?v=7';
+import { connect } from './net.js?v=7';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=7';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -163,15 +156,15 @@ try { localStorage.setItem('choc:hostroom', ROOM); } catch (e) { }
 const net = await connect(ROOM);
 if (net.mode === 'local') $('mode').classList.add('on');
 
-const R = createClassroom($('stage'), { corners: GAME.corners });
+const R = createClassroom($('stage'), { corners: GAME.corners, preload: ['louise', 'joe', 'leonard', 'ben', 'kate', 'jody', 'megan', 'suzie'] });
 function fit() { R.resize(innerWidth, innerHeight); }
 fit(); addEventListener('resize', fit);
 
 /* ---------- personnages fixes ---------- */
-R.addPerson('M', { skin: '#efc6a6', hair: '#4a3426', hairStyle: 1, top: '#2f3e4f', pants: '#24272b', blazer: true, shirt: '#e9e4dc' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2 });
-R.addPerson('P', { skin: '#e6bb98', hair: '#8f8f8f', hairStyle: 4, top: '#5a4a3a', pants: '#34363a', blazer: true, tie: '#7a1f2b', glasses: true }, { x: .5, z: -5.4, yaw: 0, spd: 1.2 });
-R.addPerson('K', { skin: '#f2cdb0', hair: '#cdb88a', hairStyle: 4, top: '#3b4049', pants: '#2b2f36', blazer: true, tie: '#3d74d6', glasses: true }, { x: 2.3, z: -4.0, yaw: Math.PI / 2 });
-R.addPerson('Mi', { skin: '#deae88', hair: '#5a3a22', hairStyle: 0, top: '#b23a30', pants: '#3a5a8a' }, { x: 4.5, z: -4.0, yaw: -Math.PI / 2 });
+R.addPerson('M', { model: 'louise' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2 });
+R.addPerson('P', { model: 'joe' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2 });
+R.addPerson('K', { model: 'leonard' }, { x: 2.3, z: -4.0, yaw: Math.PI / 2 });
+R.addPerson('Mi', { model: 'ben' }, { x: 4.5, z: -4.0, yaw: -Math.PI / 2 });
 R.setVisible('K', false); R.setVisible('Mi', false);
 
 /* ---------- joueurs ---------- */
@@ -181,7 +174,8 @@ const seatTaken = new Map();
 const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 const SK = ['#f1c7a5', '#e0ac85', '#c68a62', '#8d5a3b', '#f6d5bd', '#a8704c', '#d9a07a'], HC = ['#2b1d14', '#5a3a22', '#c9a063', '#1c1c1c', '#8a3b1e', '#d9c7a0', '#3d2b20'], PA = ['#2f3a4f', '#3b3b3b', '#5b4a3a', '#28344a', '#4a4f57'];
 const TOPS = [['#3d74d6', '#2f5fb8', '#5b8ee6', '#28509c', '#4a6fa8'], ['#d8453a', '#b9362d', '#e5675c', '#a32f27', '#c75048']];
-function lookFor(pid, team) { const h = hash(pid); return { skin: SK[h % 7], hair: HC[(h >>> 3) % 7], hairStyle: (h >>> 6) % 6, top: TOPS[team][(h >>> 9) % 5], pants: PA[(h >>> 12) % 5], glasses: (h >>> 15) % 5 === 0, badge: '#f3f3f0' }; }
+const MODELS = ['ben', 'kate', 'jody', 'megan', 'suzie', 'leonard'];
+function lookFor(pid, team) { return { model: MODELS[hash(pid) % MODELS.length] }; }
 function freeSeat(team) {
   const order = SEATS.map((s, i) => i).filter(i => !seatTaken.has(i)).sort((a, b) => team ? SEATS[b].x - SEATS[a].x : SEATS[a].x - SEATS[b].x);
   if (order.length) return order[0];
@@ -249,14 +243,14 @@ function enter() {
   R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
   R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
   banner('');
-  if (st.k === 'lobby') { setCam('lobby'); avatars.forEach((a, pid) => goHome(pid)); R.setScreen({ top: GAME.title, main: 'Scannez le code QR pour rejoindre la partie', foot: 'Code : ' + ROOM }); setTimeout(() => { if (cur().k === 'lobby') say(LINES.lobby); }, 1200); }
+  if (st.k === 'lobby') { setCam('lobby'); avatars.forEach((a, pid) => goHome(pid)); R.setScreen({ top: GAME.title, main: 'Scannez le code QR pour rejoindre la partie', foot: 'Code : ' + ROOM }); setTimeout(() => { if (cur().k === 'lobby') { narrate('Bienvenue dans Choc des cultures. Scannez le code à l’écran avec votre téléphone pour rejoindre la partie.'); say(LINES.lobby); } }, 1200); }
   if (st.k === 'intro') {
     const a = act(); setCam('wide'); avatars.forEach((x, pid) => goHome(pid, Math.random() * .8));
     banner(a.name, `Activité ${st.ai + 1} sur ${GAME.acts.length} · ${a.bloc}`, 2600);
     R.setScreen({ top: `Activité ${st.ai + 1} · ${a.name}`, main: a.rule, foot: 'Rejoindre : code ' + ROOM });
     if (a.type === 'corners' || a.type === 'fusion') R.setZones(true);
     if (a.type === 'line') R.setLine(true);
-    const l = LINES.intro[a.type]; if (l) setTimeout(() => { if (cur() === st) say(l); }, 2400);
+    const l = LINES.intro[a.type]; setTimeout(() => { if (cur() !== st) return; narrate(`Activité ${st.ai + 1} : ${a.name}. ${a.rule}`); if (l) say(l); }, 1200);
   }
   if (st.k === 'q') {
     const a = act(), q = qq();
@@ -276,28 +270,32 @@ function enter() {
     setTimeout(() => { if (cur().k !== 'final') return; avatars.forEach((a, pid) => R.react(pid, w < 0 || a.team === w ? 'cheer' : 'sad', 6)); }, 3200);
     banner(w < 0 ? 'Égalité parfaite' : GAME.teams[w].name + ' gagne', `${ts[0].avg} – ${ts[1].avg} points en moyenne par joueur`);
     R.setScreen({ top: 'Résultat final', main: w < 0 ? 'Égalité : la fusion est réussie' : GAME.teams[w].name + ' remporte la partie', foot: 'Merci d’avoir joué · équipe Charlie' });
-    setTimeout(() => { if (cur().k === 'final') say(LINES.final); }, 3800);
+    setTimeout(() => { if (cur().k !== 'final') return; narrate(w < 0 ? 'Égalité parfaite ! La fusion est réussie.' : GAME.teams[w].name + ' remporte la partie !'); say(LINES.final); }, 3200);
   }
 }
 function openQ() {
   const q = qq(); S.phase = 'open'; startTimer(q.t || 20); publish(); render();
+  hush(); narrate((act().type === 'standsit' ? 'Vrai ou faux ? ' : '') + q.q);
   if (bots.length) scheduleBots();
 }
 function playScene(lines) {
   S.phase = 'scene'; hush(); publish(); render();
   R.setVisible('K', true); R.setVisible('Mi', true); R.place('K', 3.0, -4.3, Math.PI / 2); R.place('Mi', 4.4, -4.3, -Math.PI / 2);
   setCam('scene'); R.cam('scene');
-  const st = cur(); let i = 0;
-  const nextLine = () => {
-    if (cur() !== st || S.phase !== 'scene') return;
-    if (i >= lines.length) { setCam('wide'); openQ(); return; }
-    const [w, t] = lines[i++], id = w === 'k' ? 'K' : 'Mi';
-    const d = Math.max(2.6, t.length * .06);
-    showBubble(id, t, w === 'k' ? 'Klaus · Stuttgart' : 'Mike · Detroit', w === 'k' ? GAME.teams[0].color : GAME.teams[1].color, d);
-    R.talk(id, d); speak(t, w === 'k' ? 'k' : 'mi');
-    setTimeout(nextLine, d * 1000 + 250);
-  };
-  setTimeout(nextLine, 900);
+  const st = cur(), tok = sayTok;
+  (async () => {
+    await new Promise(r => setTimeout(r, 900));
+    for (const [w, t] of lines) {
+      if (cur() !== st || S.phase !== 'scene' || tok !== sayTok) return;
+      const id = w === 'k' ? 'K' : 'Mi', d = Math.max(2.6, t.length * .07);
+      showBubble(id, t, w === 'k' ? 'Klaus · Stuttgart' : 'Mike · Detroit', w === 'k' ? GAME.teams[0].color : GAME.teams[1].color, 60);
+      R.talk(id, d); await speakP(t, w === 'k' ? 'k' : 'mi');
+      bubbles.get(id) && (bubbles.get(id)._until = 0);
+      await new Promise(r => setTimeout(r, 250));
+    }
+    if (cur() !== st || S.phase !== 'scene' || tok !== sayTok) return;
+    setCam('wide'); openQ();
+  })();
 }
 
 /* ---------- réponses en direct ---------- */
@@ -355,7 +353,8 @@ function reveal() {
   const pct = L.length ? okSet.size / L.length : 0;
   setTimeout(() => {
     if (cur().k !== 'q') return;
-    if (a.type === 'fusion') { setTimeout(() => { if (cur().k === 'q') say(extra.success ? LINES.fusionOk : LINES.fusionKo); }, 3400); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
+    if (a.type === 'fusion') { setTimeout(() => { if (cur().k === 'q') say(extra.success ? LINES.fusionOk : LINES.fusionKo); }, 3400); narrate(extra.success ? 'Fusion réussie !' : 'Fusion ratée…'); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
+    narrate(a.type === 'line' ? `Le score était de ${q.val}.` : a.type === 'standsit' ? `C’était ${q.ok ? 'vrai' : 'faux'}.` : `Bonne réponse : ${GAME.corners[q.ok].l}, ${q.opts[q.ok]}.`);
     if (!ans.length) { say(pick(LINES.none)); return; }
     const cat = pct >= .75 ? 'great' : pct >= .4 ? 'mid' : 'bad';
     const seq = [...pickLine(cat)];
@@ -367,18 +366,25 @@ function reveal() {
 let lastLine = {};
 function pickLine(cat) { const arr = LINES[cat]; let l; for (let i = 0; i < 6; i++) { l = pick(arr); if (l !== lastLine[cat]) break; } lastLine[cat] = l; return l; }
 
-/* ---------- profs : sous-titres, bulles, voix ---------- */
+/* ---------- voix : narrateur + profs (sous-titres, voix synthétiques) ---------- */
 let sayQ = [], saying = false;
+const NARR = { name: 'Narrateur' };
 function say(lines) { sayQ.push(...lines); if (!saying) sayNext(); }
-function sayNext() {
+const narrate = text => say([['N', text]]);
+async function sayNext() {
   const item = sayQ.shift();
   if (!item) { saying = false; $('cap').classList.remove('on'); R.cam(baseCam); return; }
-  saying = true; const [w, t] = item, P = PROFS[w];
-  if (S.phase !== 'scene') R.cam('profs');
-  $('capN').innerHTML = `${esc(P.name)}<small>${esc(P.role)}</small>`; $('capT').textContent = t; $('cap').classList.add('on');
-  const d = Math.max(2.8, t.length * .065);
-  R.talk(w, d);
-  speak(t, w, () => { }); const tok = sayTok; setTimeout(() => { if (tok === sayTok) sayNext(); }, d * 1000 + 300);
+  saying = true; const tok = sayTok; const [w, t] = item;
+  if (w === 'N') { $('cap').classList.remove('on'); R.cam(baseCam); }
+  else {
+    const P = PROFS[w]; if (S.phase !== 'scene') R.cam('profs');
+    $('capN').innerHTML = `${esc(P.name)}<small>${esc(P.role)}</small>`; $('capT').textContent = t; $('cap').classList.add('on');
+    R.talk(w, Math.max(2.5, t.length * .07));
+  }
+  await speakP(t, w);
+  if (tok !== sayTok) return;
+  await new Promise(r => setTimeout(r, 250));
+  if (tok === sayTok) sayNext();
 }
 const bubbles = new Map();
 function showBubble(id, text, who, color, sec) {
@@ -394,23 +400,40 @@ function placeBubbles() {
     el.style.display = 'block'; el.style.left = p.x + 'px'; el.style.top = (p.y - 6) + 'px';
   });
 }
-let VOICES = [];
-const loadVoices = () => { try { VOICES = speechSynthesis.getVoices().filter(v => /^fr/i.test(v.lang)); } catch (e) { } };
-try { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; } catch (e) { }
-const FEM = /am[ée]lie|chantal|caroline|nathalie|julie|denise|sylvie|marie|audrey|aur[ée]lie|hortense|virginie|sylvie|ariane|brigitte|celeste|female|femme/i, MAL = /thomas|nicolas|antoine|jean|paul|henri|claude|j[ée]r[ôo]me|guillaume|alain|daniel|mathieu|thierry|male|homme/i;
-function voiceFor(kind) {
-  const ca = VOICES.filter(v => /fr-CA/i.test(v.lang)), pool = ca.length ? ca : VOICES;
-  const re = kind === 'f' ? FEM : MAL;
-  return pool.find(v => re.test(v.name)) || pool[0] || null;
+let VOICES = [], VMAP = {};
+const FEM = /am[ée]lie|chantal|caroline|nathalie|julie|denise|sylvie|marie|audrey|aur[ée]lie|hortense|virginie|ariane|brigitte|celeste|[ée]lo[iï]se|vivienne|jos[ée]phine|coralie|yvette|jacqueline|female|femme/i;
+const MAL = /thomas|nicolas|antoine|jean|paul|henri|claude|j[ée]r[ôo]me|guillaume|alain|daniel|mathieu|thierry|r[ée]my|maurice|yves|lucien|g[ée]rard|fabrice|male|homme/i;
+const NATURAL = /natural|online|neural|premium|enhanced|wavenet|siri/i;
+function scoreVoice(v, kind) {
+  let s = 0;
+  if (NATURAL.test(v.name)) s += 10;
+  if (/fr-CA/i.test(v.lang)) s += 4; else if (/fr-FR/i.test(v.lang)) s += 2;
+  if (/google/i.test(v.name)) s += 3;
+  if (kind === 'f') s += FEM.test(v.name) ? 5 : MAL.test(v.name) ? -8 : 0;
+  if (kind === 'm') s += MAL.test(v.name) ? 5 : FEM.test(v.name) ? -8 : 0;
+  return s;
 }
-function speak(text, who, done) {
-  if (!S.sound || !window.speechSynthesis) { done && done(); return; }
-  try {
-    const u = new SpeechSynthesisUtterance(text.replace(/«|»/g, ''));
-    const kind = who === 'M' ? 'f' : 'm'; const v = voiceFor(kind); if (v) u.voice = v; u.lang = v ? v.lang : 'fr-CA';
-    u.pitch = { M: 1.1, P: .82, k: .75, mi: 1.15 }[who] || 1; u.rate = { M: 1.02, P: .98, k: .92, mi: 1.12 }[who] || 1;
-    u.onend = () => done && done(); speechSynthesis.speak(u);
-  } catch (e) { done && done(); }
+function loadVoices() {
+  try { VOICES = speechSynthesis.getVoices().filter(v => /^fr/i.test(v.lang)); } catch (e) { VOICES = []; }
+  const best = kind => VOICES.slice().sort((a, b) => scoreVoice(b, kind) - scoreVoice(a, kind));
+  const males = best('m'), fems = best('f');
+  VMAP = { N: males[0] || fems[0] || null, M: fems[0] || null, P: males.find(v => v !== males[0] && MAL.test(v.name)) || males[0] || null, k: males[1] || males[0] || null, mi: males[2] || males[0] || null };
+}
+try { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; } catch (e) { }
+function speakP(text, who) {
+  return new Promise(res => {
+    const est = Math.max(2.4, text.length * .07); let done = false; const fin = () => { if (!done) { done = true; res(); } };
+    if (!S.sound || !window.speechSynthesis) { setTimeout(fin, est * 1000); return; }
+    try {
+      const u = new SpeechSynthesisUtterance(text.replace(/[«»…]/g, ' ').replace(/G\$/g, ' milliards de dollars'));
+      const v = VMAP[who] || null; if (v) u.voice = v; u.lang = v ? v.lang : 'fr-CA';
+      const nat = v && NATURAL.test(v.name);
+      u.rate = { N: .97, M: 1.0, P: 1.03, k: .93, mi: 1.1 }[who] || 1;
+      u.pitch = nat ? 1 : ({ N: .95, M: 1.08, P: .85, k: .78, mi: 1.12 }[who] || 1);
+      u.onend = fin; u.onerror = fin; speechSynthesis.speak(u);
+      setTimeout(fin, (est * 2 + 4) * 1000);
+    } catch (e) { setTimeout(fin, est * 1000); }
+  });
 }
 
 /* ---------- minuteur ---------- */
@@ -498,19 +521,16 @@ try { const qr = qrcode(0, 'M'); qr.addData(joinURL); qr.make(); $('qr').innerHT
 
 /* ---------- contrôles ---------- */
 function next() { const st = cur(); if (st.k === 'q' && S.phase !== 'reveal') { if (S.phase === 'scene') return; reveal(); return; } if (st.k === 'final') return; go(S.step + 1); }
-$('bNext').onclick = next; $('bPrev').onclick = () => go(S.step - 1);
-$('bBots').onclick = () => addBots(12);
-const toggleSound = () => { S.sound = !S.sound; $('bSound').textContent = 'Voix : ' + (S.sound ? 'oui' : 'non'); if (!S.sound) try { speechSynthesis.cancel(); } catch (e) { } };
-$('bSound').onclick = toggleSound;
+$('bNext').onclick = next;
+const toggleSound = () => { S.sound = !S.sound; flash('Voix : ' + (S.sound ? 'oui' : 'non')); if (!S.sound) try { speechSynthesis.cancel(); } catch (e) { } };
 const full = () => { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => { }); } catch (e) { } };
-$('bFull').onclick = full;
-let hq = true; const toggleQ = () => { hq = !hq; R.setQuality(hq); R.resize(innerWidth, innerHeight); $('bQual').textContent = 'Qualité : ' + (hq ? 'haute' : 'réduite'); };
-$('bQual').onclick = toggleQ;
+let hq = true; const toggleQ = () => { hq = !hq; R.setQuality(hq); R.resize(innerWidth, innerHeight); flash('Qualité : ' + (hq ? 'haute' : 'réduite')); };
+function flash(t) { banner(t, '', 1200); }
 let resetArm = 0;
-$('bReset').onclick = async () => {
-  if (Date.now() - resetArm > 3000) { resetArm = Date.now(); $('bReset').textContent = 'Confirmer ?'; setTimeout(() => $('bReset').textContent = 'Nouvelle partie', 3000); return; }
+async function resetGame() {
+  if (Date.now() - resetArm > 3000) { resetArm = Date.now(); flash('Nouvelle partie ? Appuyez encore sur N'); return; }
   await net.clearRoom(); bots = []; S.awarded = {}; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
-};
+}
 $('lobbyCols').addEventListener('click', e => { const b = e.target.closest('[data-kick]'); if (b) net.removePlayer(b.dataset.kick); });
 addEventListener('keydown', e => {
   const k = e.code;
@@ -520,6 +540,7 @@ addEventListener('keydown', e => {
   else if (k === 'KeyS') toggleSound();
   else if (k === 'KeyF') full();
   else if (k === 'KeyQ') toggleQ();
+  else if (k === 'KeyN') resetGame();
 });
 
 /* ---------- boucle ---------- */
@@ -532,12 +553,12 @@ function frame(now) {
     if (S.timer.left <= 0) closeQ();
   }
   if (S.t0 !== null) { const e = (now - S.t0) / 1000, f = v => String(Math.floor(v)).padStart(2, '0'); $('clock').innerHTML = `${f(e / 60)}:${f(e % 60)}<em>sur ${f(GAME.minutes)}:00</em>`; $('clock').style.color = e > GAME.minutes * 60 ? '#ff8a7a' : ''; }
-  R.tick(dt); placeBubbles();
+  if (!window.__pause) R.tick(dt); placeBubbles();
   requestAnimationFrame(frame);
 }
 net.onPlayers(v => { players = v || {}; syncAvatars(); renderHUD(); if (cur().k === 'lobby') renderLobby(); });
 go(0); requestAnimationFrame(t => { last = t; frame(t); });
-window.__host = { addBots, next, go, S, R, players: () => players };
+window.__host = { addBots, next, go, S, R, players: () => players, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
 </script>
 </body>
 </html>

@@ -69,14 +69,23 @@ Le QR code pointe automatiquement vers `player.html` à la même adresse.
 
 ### Commandes (clavier ou télécommande de présentation)
 
+À l'écran, il n'y a qu'un bouton **Suivant**. Tout le reste se fait au clavier :
+
 | Touche | Action |
 |---|---|
 | Espace, →, Page suivante | Suivant · ferme la question et révèle la réponse |
 | ←, Page précédente | Étape précédente |
 | B | Ajouter 12 joueurs fictifs |
-| S | Voix des profs on/off |
+| S | Voix on/off |
 | F | Plein écran |
-| Q | Qualité haute / réduite |
+| Q | Qualité haute / réduite (si l'ordinateur rame) |
+| N (deux fois) | Nouvelle partie (efface les joueurs et les scores) |
+
+### Voix du narrateur et des profs
+
+Un narrateur lit les consignes et les questions à voix haute, puis les profs commentent. Les voix viennent du navigateur :
+- **Microsoft Edge (recommandé)** propose des voix naturelles en français du Canada (*Sylvie*, *Antoine*, *Jean*, *Thierry*). Le jeu les choisit automatiquement.
+- Chrome utilise la voix *Google français*, correcte mais moins naturelle.
 
 Pendant l'accueil, cliquer sur le nom d'un joueur le retire de la partie (pratique pour un pseudo inapproprié).
 
@@ -98,6 +107,10 @@ Le score d'équipe est la **moyenne** par joueur, pour que des équipes de taill
 Tout se trouve dans `config.js` : questions, explications, durées (`t`, en secondes) et répliques des profs, classées par situation (`great`, `mid`, `bad`, `none`, `retort`…).
 Vérifiez les chiffres avec le livre de Meier avant la présentation. Les scores d'Hofstede utilisés sont les scores classiques (France : distance hiérarchique 68, contrôle de l'incertitude 86 ; États-Unis : individualisme 91 ; Allemagne : 35 / 65 / 67).
 
-## 7. Après la présentation
+## 7. Personnages 3D
+
+Les personnages (dossier `assets/`) sont des modèles humains de type Mixamo (Adobe), repris du dépôt public [4-Impact/inequality-simulator](https://github.com/4-Impact/inequality-simulator), puis compressés pour le web (textures 1024 px, environ 1 Mo par personnage). Les animations disponibles sont : attente, marche, déception et célébration. La position assise est calculée par le jeu.
+
+## 8. Après la présentation
 
 Dans la console Firebase, supprimez le nœud `rooms` ou remettez les règles à `".read": false, ".write": false`. Les règles fournies laissent n'importe qui écrire dans `rooms` : c'est pratique pour un événement de classe, pas pour un usage permanent.
