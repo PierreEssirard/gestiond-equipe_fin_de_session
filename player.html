@@ -75,6 +75,7 @@ if (!ROOM) {
 async function start() {
   $('ft').textContent = 'Partie ' + ROOM;
   const net = await connect(ROOM);
+  if (net.mode === 'local') { const w = document.createElement('div'); w.style.cssText = 'background:#ffd34d;color:#111;font:700 14px/1.3 Barlow,sans-serif;padding:10px 16px;text-align:center'; w.textContent = 'Mode répétition : Firebase n’est pas configuré, ce téléphone n’est pas relié à l’écran du projecteur.'; document.body.insertBefore(w, document.body.firstChild.nextSibling); }
   let pid; try { pid = localStorage.getItem('choc:pid:' + ROOM); } catch (e) { }
   if (!pid) { pid = 'p' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('choc:pid:' + ROOM, pid); } catch (e) { } }
   let me = null, players = {}, state = null, sent = {};
