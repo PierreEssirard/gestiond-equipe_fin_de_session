@@ -139,10 +139,10 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES } from './config.js?v=8';
-import { connect } from './net.js?v=8';
-import { keyFor, spoken, NARR } from './voices.js?v=8';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=8';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=9';
+import { connect } from './net.js?v=9';
+import { keyFor, spoken, NARR } from './voices.js?v=9';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=9';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -421,14 +421,29 @@ function loadVoices() {
 }
 try { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; } catch (e) { }
 let VOIX = new Set(), curAudio = null;
-const voixReady = fetch('voix/index.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : []).then(a => { VOIX = new Set(a); }).catch(() => { });
+/* Voix ElevenLabs : fichiers voix/*.mp3 du dépôt, ou clips rangés dans Firebase par tools/voix.html */
+const DBURL = FIREBASE && FIREBASE.databaseURL ? FIREBASE.databaseURL.replace(/\/$/, '') : null;
+const clipURL = new Map();
+async function dbClip(key) {
+  if (clipURL.has(key)) return clipURL.get(key);
+  const p = fetch(`${DBURL}/voix/${key}.json`).then(r => r.json()).then(b => { if (!b) return null; const bin = atob(b), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return URL.createObjectURL(new Blob([u], { type: 'audio/mpeg' })); }).catch(() => null);
+  clipURL.set(key, p); return p;
+}
+let VOIX_DB = new Set();
+const voixReady = Promise.all([
+  fetch('voix/index.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : []).then(a => { VOIX = new Set(a); }).catch(() => { }),
+  DBURL ? fetch(DBURL + '/voix.json?shallow=true').then(r => r.json()).then(o => { VOIX_DB = new Set(Object.keys(o || {})); (async () => { for (const k of VOIX_DB) await dbClip(k); })(); }).catch(() => { }) : null
+]);
 async function speakP(text, who) {
   await Promise.race([voixReady, new Promise(r => setTimeout(r, 3000))]);
   const key = keyFor(who, text);
-  if (S.sound && VOIX.has(key)) return new Promise(res => {
+  let src = null;
+  if (S.sound && VOIX.has(key)) src = 'voix/' + key + '.mp3';
+  else if (S.sound && VOIX_DB.has(key)) src = await dbClip(key);
+  if (src) return new Promise(res => {
     let done = false; const fin = () => { if (!done) { done = true; curAudio = null; res(); } };
-    const au = new Audio('voix/' + key + '.mp3'); curAudio = au; au.volume = 1;
-    au.onended = fin; au.onerror = () => { VOIX.delete(key); speakTTS(text, who).then(fin); };
+    const au = new Audio(src); curAudio = au; au.volume = 1;
+    au.onended = fin; au.onerror = () => { VOIX.delete(key); VOIX_DB.delete(key); speakTTS(text, who).then(fin); };
     au.play().catch(() => speakTTS(text, who).then(fin));
     setTimeout(fin, Math.max(20, text.length * .15) * 1000);
   });

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Générateur de voix</title>
+<style>
+/* VOICE outil de préparation, sobre et lisible
+   IDEA une console de studio d'enregistrement : une piste par réplique
+   PICTURE la liste des répliques qui se cochent une à une
+   COLOUR graphite, jaune signal, vert pour fait, rouge pour échec
+   TYPE system-ui
+   LAYOUT une colonne : clé, bouton, progression, pistes */
+:root{color-scheme:dark;--bg:#0f1416;--card:#182024;--edge:rgba(255,255,255,.12);--ink:#eef2f3;--mut:#9fb0b6;--acc:#ffd34d;--ok:#2fb36a;--ko:#e0574b}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:900px;margin:0 auto;padding:28px 16px 60px;display:grid;gap:16px}
+h1{margin:0;font-size:34px;line-height:1.05}
+p{margin:0;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:16px;display:grid;gap:12px}
+label{font-weight:700}
+input[type=password]{width:100%;font:16px monospace;padding:12px;border-radius:10px;border:2px solid var(--edge);background:#0c1113;color:var(--ink)}
+input:focus-visible,button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+button{font:700 16px system-ui;min-height:44px;padding:10px 18px;border-radius:10px;border:0;background:var(--acc);color:#111;cursor:pointer}
+button[disabled]{opacity:.45;cursor:default}
+.bar{height:10px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+ol{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+li{display:grid;grid-template-columns:2.2em 4.5em minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.04);font-size:14px}
+li b{font-weight:700;color:var(--mut)}
+li .st{white-space:nowrap;font-weight:700}
+li.ok .st{color:var(--ok)}li.ko .st{color:var(--ko)}li.run .st{color:var(--acc)}
+li button{min-height:32px;padding:4px 10px;font-size:13px;background:#2a353a;color:var(--ink)}
+#log{font:13px monospace;color:var(--mut);white-space:pre-wrap}
+</style>
+</head>
+<body>
+<main>
+  <h1>Générateur de voix ElevenLabs</h1>
+  <p>Crée une fois toutes les répliques du jeu (narrateur, profs, Klaus et Mike) et les range dans la base Firebase du jeu. La clé reste dans cette page : elle n’est ni enregistrée ni publiée.</p>
+  <section class="card">
+    <label for="k">Clé API ElevenLabs (Developers &gt; API Keys)</label>
+    <input type="password" id="k" autocomplete="off" spellcheck="false" placeholder="sk_…">
+    <div class="row"><button id="go">Générer les voix manquantes</button><label><input type="checkbox" id="force"> Tout régénérer</label><span id="sum"></span></div>
+    <div class="bar"><i id="bar"></i></div>
+    <div id="log"></div>
+  </section>
+  <ol id="list"></ol>
+</main>
+<script type="module">
+import { GAME, LINES, ELEVEN, FIREBASE } from '../config.js?v=9';
+import { allLines, keyFor, spoken } from '../voices.js?v=9';
+const $ = id => document.getElementById(id);
+const DB = FIREBASE.databaseURL.replace(/\/$/, '');
+const lines = allLines(GAME, LINES).map(l => ({ ...l, key: keyFor(l.who, l.text) }));
+const WHO = { N: 'Narrateur', M: 'Mélanie', P: 'Philippe', k: 'Klaus', mi: 'Mike' };
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+let have = new Set();
+$('list').innerHTML = lines.map((l, i) => `<li id="l${i}"><b>${i + 1}</b><b>${WHO[l.who]}</b><span>${esc(l.text)}</span><span class="row"><span class="st"></span><button data-play="${i}" hidden>Écouter</button></span></li>`).join('');
+const log = t => { $('log').textContent = t; };
+function mark(i, cls, st) { const el = $('l' + i); el.className = cls; el.querySelector('.st').textContent = st; el.querySelector('[data-play]').hidden = cls !== 'ok'; }
+async function refresh() {
+  try { const r = await fetch(DB + '/voix.json?shallow=true'); have = new Set(Object.keys((await r.json()) || {})); } catch (e) { have = new Set(); }
+  lines.forEach((l, i) => have.has(l.key) ? mark(i, 'ok', 'prête') : mark(i, '', ''));
+  $('sum').textContent = `${lines.filter(l => have.has(l.key)).length} / ${lines.length} prêtes · ${lines.reduce((s, l) => s + spoken(l.text).length, 0)} caractères au total`;
+}
+refresh();
+const b64 = buf => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+async function tts(key, l) {
+  const body = { text: spoken(l.text), model_id: ELEVEN.model, voice_settings: ELEVEN.settings[l.who] || ELEVEN.settings.default };
+  for (let a = 1; a <= 4; a++) {
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN.voices[l.who]}?output_format=mp3_44100_96`, { method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(body) });
+    if (r.ok) return r.arrayBuffer();
+    const msg = await r.text();
+    if (r.status === 429 || r.status >= 500) { await new Promise(s => setTimeout(s, 2000 * a)); continue; }
+    throw new Error(`HTTP ${r.status} ${msg.slice(0, 200)}`);
+  }
+  throw new Error('trop d’échecs');
+}
+$('go').onclick = async () => {
+  const key = $('k').value.trim(); if (!key) { log('Collez d’abord votre clé API.'); return; }
+  $('go').disabled = true; const force = $('force').checked;
+  const todo = lines.map((l, i) => [l, i]).filter(([l]) => force || !have.has(l.key));
+  let n = 0, fail = 0, stop = false;
+  const work = async () => {
+    while (todo.length && !stop) {
+      const [l, i] = todo.shift(); mark(i, 'run', 'génération…');
+      try {
+        const buf = await tts(key, l);
+        const r = await fetch(`${DB}/voix/${l.key}.json`, { method: 'PUT', body: JSON.stringify(b64(buf)) });
+        if (!r.ok) throw new Error('Firebase ' + r.status);
+        have.add(l.key); mark(i, 'ok', 'prête');
+      } catch (e) { fail++; mark(i, 'ko', 'échec'); log(e.message); if (/401|quota|credit|invalid_api_key/i.test(e.message)) stop = true; }
+      n++; $('bar').style.width = (n / (n + todo.length) * 100) + '%';
+    }
+  };
+  await Promise.all([work(), work(), work()]);
+  $('go').disabled = false; await refresh();
+  log(fail ? `${fail} réplique(s) en échec. Relancez pour réessayer.` : 'Terminé : toutes les voix sont dans la base. Rechargez le jeu (Ctrl+Maj+R).');
+};
+$('list').addEventListener('click', async e => {
+  const b = e.target.closest('[data-play]'); if (!b) return;
+  const l = lines[+b.dataset.play]; const r = await fetch(`${DB}/voix/${l.key}.json`); const s = await r.json();
+  if (s) new Audio('data:audio/mpeg;base64,' + s).play();
+});
+</script>
+</body>
+</html>

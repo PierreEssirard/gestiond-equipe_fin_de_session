@@ -1,10 +1,6 @@
 {
   "rules": {
-    "rooms": {
-      "$room": {
-        ".read": true,
-        ".write": true
-      }
-    }
+    "rooms": { "$room": { ".read": true, ".write": true } },
+    "voix": { ".read": true, ".write": true }
   }
 }
