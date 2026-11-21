@@ -90,6 +90,26 @@ export const GAME = {
   ]
 };
 
+/* ---------- Voix ElevenLabs (générées à l'avance par tools/generer-voix.mjs) ----------
+   Remplacez les identifiants par des voix françaises ou québécoises de la Voice Library
+   d'ElevenLabs (bouton « Add to my voices », puis copiez le « Voice ID »).
+   Par défaut : voix standard d'ElevenLabs, qui parlent français avec le modèle multilingue. */
+export const ELEVEN = {
+  model: 'eleven_multilingual_v2',
+  voices: {
+    N: 'JBFqnCBsd6RMkjVDRZzb',  // narrateur (George, voix posée de conteur)
+    M: 'EXAVITQu4vr4xnSDxMaL',  // Mélanie Cloutier (Sarah)
+    P: 'IKne3meq5aSn9XLyUdCD',  // Philippe Joly (Charlie, ton décontracté)
+    k: 'onwK4e9ZLuTAKqWW03F9',  // Klaus (Daniel, ton autoritaire)
+    mi: 'CwhRBWXzGAHq8TQ4Fs17'  // Mike (Roger)
+  },
+  settings: {
+    default: { stability: 0.45, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true },
+    N: { stability: 0.6, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
+    P: { stability: 0.35, similarity_boost: 0.8, style: 0.55, use_speaker_boost: true }
+  }
+};
+
 /* ---------- Les profs (apparence générique, pas des portraits) ---------- */
 export const PROFS = {
   M: { name: 'Mélanie Cloutier', role: 'Professeure, GIN761', voice: 'f' },

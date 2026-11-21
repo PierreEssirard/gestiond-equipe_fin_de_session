@@ -139,9 +139,10 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES } from './config.js?v=7';
-import { connect } from './net.js?v=7';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=7';
+import { GAME, PROFS, LINES } from './config.js?v=8';
+import { connect } from './net.js?v=8';
+import { keyFor, spoken, NARR } from './voices.js?v=8';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=8';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -229,7 +230,7 @@ function publish(extra = {}) {
 }
 
 let sayTok = 0;
-function hush() { sayQ = []; sayTok++; saying = false; $('cap').classList.remove('on'); try { speechSynthesis.cancel(); } catch (e) { } }
+function hush() { sayQ = []; sayTok++; saying = false; $('cap').classList.remove('on'); try { speechSynthesis.cancel(); } catch (e) { } if (curAudio) { try { curAudio.pause(); } catch (e) { } curAudio = null; } }
 function go(i) {
   S.step = Math.max(0, Math.min(steps.length - 1, i)); S.phase = null; clearTimer(); stopBots(); hush();
   if (unsubA) { unsubA(); unsubA = null; } answers = {};
@@ -243,14 +244,14 @@ function enter() {
   R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
   R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
   banner('');
-  if (st.k === 'lobby') { setCam('lobby'); avatars.forEach((a, pid) => goHome(pid)); R.setScreen({ top: GAME.title, main: 'Scannez le code QR pour rejoindre la partie', foot: 'Code : ' + ROOM }); setTimeout(() => { if (cur().k === 'lobby') { narrate('Bienvenue dans Choc des cultures. Scannez le code à l’écran avec votre téléphone pour rejoindre la partie.'); say(LINES.lobby); } }, 1200); }
+  if (st.k === 'lobby') { setCam('lobby'); avatars.forEach((a, pid) => goHome(pid)); R.setScreen({ top: GAME.title, main: 'Scannez le code QR pour rejoindre la partie', foot: 'Code : ' + ROOM }); setTimeout(() => { if (cur().k === 'lobby') { narrate(NARR.welcome); say(LINES.lobby); } }, 1200); }
   if (st.k === 'intro') {
     const a = act(); setCam('wide'); avatars.forEach((x, pid) => goHome(pid, Math.random() * .8));
     banner(a.name, `Activité ${st.ai + 1} sur ${GAME.acts.length} · ${a.bloc}`, 2600);
     R.setScreen({ top: `Activité ${st.ai + 1} · ${a.name}`, main: a.rule, foot: 'Rejoindre : code ' + ROOM });
     if (a.type === 'corners' || a.type === 'fusion') R.setZones(true);
     if (a.type === 'line') R.setLine(true);
-    const l = LINES.intro[a.type]; setTimeout(() => { if (cur() !== st) return; narrate(`Activité ${st.ai + 1} : ${a.name}. ${a.rule}`); if (l) say(l); }, 1200);
+    const l = LINES.intro[a.type]; setTimeout(() => { if (cur() !== st) return; narrate(NARR.intro(st.ai, a)); if (l) say(l); }, 1200);
   }
   if (st.k === 'q') {
     const a = act(), q = qq();
@@ -270,12 +271,12 @@ function enter() {
     setTimeout(() => { if (cur().k !== 'final') return; avatars.forEach((a, pid) => R.react(pid, w < 0 || a.team === w ? 'cheer' : 'sad', 6)); }, 3200);
     banner(w < 0 ? 'Égalité parfaite' : GAME.teams[w].name + ' gagne', `${ts[0].avg} – ${ts[1].avg} points en moyenne par joueur`);
     R.setScreen({ top: 'Résultat final', main: w < 0 ? 'Égalité : la fusion est réussie' : GAME.teams[w].name + ' remporte la partie', foot: 'Merci d’avoir joué · équipe Charlie' });
-    setTimeout(() => { if (cur().k !== 'final') return; narrate(w < 0 ? 'Égalité parfaite ! La fusion est réussie.' : GAME.teams[w].name + ' remporte la partie !'); say(LINES.final); }, 3200);
+    setTimeout(() => { if (cur().k !== 'final') return; narrate(NARR.final(w, GAME.teams)); say(LINES.final); }, 3200);
   }
 }
 function openQ() {
   const q = qq(); S.phase = 'open'; startTimer(q.t || 20); publish(); render();
-  hush(); narrate((act().type === 'standsit' ? 'Vrai ou faux ? ' : '') + q.q);
+  hush(); narrate(NARR.question(act(), q));
   if (bots.length) scheduleBots();
 }
 function playScene(lines) {
@@ -353,8 +354,8 @@ function reveal() {
   const pct = L.length ? okSet.size / L.length : 0;
   setTimeout(() => {
     if (cur().k !== 'q') return;
-    if (a.type === 'fusion') { setTimeout(() => { if (cur().k === 'q') say(extra.success ? LINES.fusionOk : LINES.fusionKo); }, 3400); narrate(extra.success ? 'Fusion réussie !' : 'Fusion ratée…'); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
-    narrate(a.type === 'line' ? `Le score était de ${q.val}.` : a.type === 'standsit' ? `C’était ${q.ok ? 'vrai' : 'faux'}.` : `Bonne réponse : ${GAME.corners[q.ok].l}, ${q.opts[q.ok]}.`);
+    if (a.type === 'fusion') { setTimeout(() => { if (cur().k === 'q') say(extra.success ? LINES.fusionOk : LINES.fusionKo); }, 3400); narrate(NARR.fusion(extra.success)); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
+    narrate(NARR.reveal(a, q, GAME.corners));
     if (!ans.length) { say(pick(LINES.none)); return; }
     const cat = pct >= .75 ? 'great' : pct >= .4 ? 'mid' : 'bad';
     const seq = [...pickLine(cat)];
@@ -368,7 +369,6 @@ function pickLine(cat) { const arr = LINES[cat]; let l; for (let i = 0; i < 6; i
 
 /* ---------- voix : narrateur + profs (sous-titres, voix synthétiques) ---------- */
 let sayQ = [], saying = false;
-const NARR = { name: 'Narrateur' };
 function say(lines) { sayQ.push(...lines); if (!saying) sayNext(); }
 const narrate = text => say([['N', text]]);
 async function sayNext() {
@@ -420,12 +420,26 @@ function loadVoices() {
   VMAP = { N: males[0] || fems[0] || null, M: fems[0] || null, P: males.find(v => v !== males[0] && MAL.test(v.name)) || males[0] || null, k: males[1] || males[0] || null, mi: males[2] || males[0] || null };
 }
 try { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; } catch (e) { }
-function speakP(text, who) {
+let VOIX = new Set(), curAudio = null;
+const voixReady = fetch('voix/index.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : []).then(a => { VOIX = new Set(a); }).catch(() => { });
+async function speakP(text, who) {
+  await Promise.race([voixReady, new Promise(r => setTimeout(r, 3000))]);
+  const key = keyFor(who, text);
+  if (S.sound && VOIX.has(key)) return new Promise(res => {
+    let done = false; const fin = () => { if (!done) { done = true; curAudio = null; res(); } };
+    const au = new Audio('voix/' + key + '.mp3'); curAudio = au; au.volume = 1;
+    au.onended = fin; au.onerror = () => { VOIX.delete(key); speakTTS(text, who).then(fin); };
+    au.play().catch(() => speakTTS(text, who).then(fin));
+    setTimeout(fin, Math.max(20, text.length * .15) * 1000);
+  });
+  return speakTTS(text, who);
+}
+function speakTTS(text, who) {
   return new Promise(res => {
     const est = Math.max(2.4, text.length * .07); let done = false; const fin = () => { if (!done) { done = true; res(); } };
     if (!S.sound || !window.speechSynthesis) { setTimeout(fin, est * 1000); return; }
     try {
-      const u = new SpeechSynthesisUtterance(text.replace(/[«»…]/g, ' ').replace(/G\$/g, ' milliards de dollars'));
+      const u = new SpeechSynthesisUtterance(spoken(text));
       const v = VMAP[who] || null; if (v) u.voice = v; u.lang = v ? v.lang : 'fr-CA';
       const nat = v && NATURAL.test(v.name);
       u.rate = { N: .97, M: 1.0, P: 1.03, k: .93, mi: 1.1 }[who] || 1;
@@ -522,7 +536,7 @@ try { const qr = qrcode(0, 'M'); qr.addData(joinURL); qr.make(); $('qr').innerHT
 /* ---------- contrôles ---------- */
 function next() { const st = cur(); if (st.k === 'q' && S.phase !== 'reveal') { if (S.phase === 'scene') return; reveal(); return; } if (st.k === 'final') return; go(S.step + 1); }
 $('bNext').onclick = next;
-const toggleSound = () => { S.sound = !S.sound; flash('Voix : ' + (S.sound ? 'oui' : 'non')); if (!S.sound) try { speechSynthesis.cancel(); } catch (e) { } };
+const toggleSound = () => { S.sound = !S.sound; flash('Voix : ' + (S.sound ? 'oui' : 'non')); if (!S.sound) hush(); };
 const full = () => { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => { }); } catch (e) { } };
 let hq = true; const toggleQ = () => { hq = !hq; R.setQuality(hq); R.resize(innerWidth, innerHeight); flash('Qualité : ' + (hq ? 'haute' : 'réduite')); };
 function flash(t) { banner(t, '', 1200); }

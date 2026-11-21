@@ -13,6 +13,8 @@ L'écran du projecteur montre une salle de classe en 3D. Les élèves scannent u
 | `scene.js` | La salle 3D (Three.js) |
 | `net.js` | Connexion temps réel (Firebase, ou mode répétition local) |
 | `database.rules.json` | Règles de sécurité Firebase à coller dans la console |
+| `voices.js` | Textes parlés (narrateur, profs) partagés entre le jeu et le script de voix |
+| `tools/generer-voix.mjs` | Génère les voix ElevenLabs dans `voix/` (à lancer sur votre ordinateur) |
 
 ## 1. Répéter tout de suite (sans Firebase)
 
@@ -81,13 +83,24 @@ Le QR code pointe automatiquement vers `player.html` à la même adresse.
 | Q | Qualité haute / réduite (si l'ordinateur rame) |
 | N (deux fois) | Nouvelle partie (efface les joueurs et les scores) |
 
-### Voix du narrateur et des profs
+### Voix du narrateur et des profs (ElevenLabs)
 
-Un narrateur lit les consignes et les questions à voix haute, puis les profs commentent. Les voix viennent du navigateur :
-- **Microsoft Edge (recommandé)** propose des voix naturelles en français du Canada (*Sylvie*, *Antoine*, *Jean*, *Thierry*). Le jeu les choisit automatiquement.
-- Chrome utilise la voix *Google français*, correcte mais moins naturelle.
+Un narrateur lit les consignes, les questions et les réponses, puis les profs commentent. Klaus et Mike jouent leur scène à voix haute.
 
-Pendant l'accueil, cliquer sur le nom d'un joueur le retire de la partie (pratique pour un pseudo inapproprié).
+**Voix humaines ElevenLabs (recommandé).** Toutes les répliques sont connues à l'avance : on les génère une seule fois en fichiers MP3, qui sont mis sur GitHub. La clé API reste sur votre ordinateur et n'est jamais publiée.
+
+1. Créez un compte sur [elevenlabs.io](https://elevenlabs.io), puis copiez votre clé dans *Developers > API Keys*. Il y a environ 6 200 caractères à générer.
+2. (Optionnel) Choisissez des voix françaises ou québécoises dans la *Voice Library*, faites *Add to my voices* et copiez chaque *Voice ID* dans `config.js`, section `ELEVEN.voices` (N = narrateur, M = Mélanie, P = Philippe, k = Klaus, mi = Mike).
+3. Installez [Node.js](https://nodejs.org) 18 ou plus récent, puis, à la racine du dépôt :
+   - Windows PowerShell : `$env:ELEVENLABS_API_KEY="votre_clé"; node tools/generer-voix.mjs`
+   - Git Bash, macOS ou Linux : `ELEVENLABS_API_KEY=votre_clé node tools/generer-voix.mjs`
+4. Publiez : `git add voix && git commit -m "Voix ElevenLabs" && git push`.
+
+Si vous modifiez une question ou une réplique dans `config.js`, relancez le script : il ne génère que les nouvelles répliques. Pour changer de voix, ajoutez `--force` pour tout régénérer. `node tools/generer-voix.mjs --dry` affiche le nombre de caractères sans rien générer.
+
+**Sans fichiers ElevenLabs**, le jeu utilise la synthèse vocale du navigateur. Dans ce cas, préférez Microsoft Edge, qui propose des voix naturelles en français du Canada (*Sylvie*, *Antoine*…).
+
+Les navigateurs bloquent le son tant qu'on n'a pas cliqué sur la page : cliquez une fois sur l'écran d'accueil (ou appuyez sur F pour le plein écran) avant que la classe arrive.
 
 ## 5. Déroulement (environ 10 minutes)
 
