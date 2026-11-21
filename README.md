@@ -87,14 +87,14 @@ Le QR code pointe automatiquement vers `player.html` à la même adresse.
 
 Un narrateur lit les consignes, les questions et les réponses, puis les profs commentent. Klaus et Mike jouent leur scène à voix haute.
 
-**Voix humaines ElevenLabs (recommandé).** Toutes les répliques sont connues à l'avance : on les génère une seule fois en fichiers MP3, qui sont mis sur GitHub. La clé API reste sur votre ordinateur et n'est jamais publiée.
+**Voix humaines ElevenLabs (déjà en place).** Les 95 répliques ont été générées avec ElevenLabs et sont stockées dans la base Firebase (branche `voix`, en lecture seule). Le jeu les charge au démarrage. La clé API n'est stockée nulle part.
 
-1. Créez un compte sur [elevenlabs.io](https://elevenlabs.io), puis copiez votre clé dans *Developers > API Keys*. Il y a environ 6 200 caractères à générer.
-2. (Optionnel) Choisissez des voix françaises ou québécoises dans la *Voice Library*, faites *Add to my voices* et copiez chaque *Voice ID* dans `config.js`, section `ELEVEN.voices` (N = narrateur, M = Mélanie, P = Philippe, k = Klaus, mi = Mike).
-3. Installez [Node.js](https://nodejs.org) 18 ou plus récent, puis, à la racine du dépôt :
-   - Windows PowerShell : `$env:ELEVENLABS_API_KEY="votre_clé"; node tools/generer-voix.mjs`
-   - Git Bash, macOS ou Linux : `ELEVENLABS_API_KEY=votre_clé node tools/generer-voix.mjs`
-4. Publiez : `git add voix && git commit -m "Voix ElevenLabs" && git push`.
+Pour régénérer après avoir modifié un texte ou une voix dans `config.js` :
+1. Dans la console Firebase, onglet **Règles**, passez `voix` en `".write": true` et publiez.
+2. Ouvrez `https://VOTRE-COMPTE.github.io/VOTRE-DEPOT/tools/voix.html`, collez une clé API ElevenLabs (permission *Text to Speech*) et cliquez sur **Générer les voix manquantes**. Cochez *Tout régénérer* si vous avez changé de voix.
+3. Remettez `voix` en `".write": false`.
+
+Alternative hors ligne : `node tools/generer-voix.mjs` génère les mêmes fichiers dans `voix/` (voir l'en-tête du script).
 
 Si vous modifiez une question ou une réplique dans `config.js`, relancez le script : il ne génère que les nouvelles répliques. Pour changer de voix, ajoutez `--force` pour tout régénérer. `node tools/generer-voix.mjs --dry` affiche le nombre de caractères sans rien générer.
 
