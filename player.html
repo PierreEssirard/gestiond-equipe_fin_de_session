@@ -80,9 +80,9 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=15';
-import { connect } from './net.js?v=15';
-import { pruneSent, phoneMode, zoneSpot, lineSpot, crowdSpot, finalSpots, winner } from './logic.js?v=15';
+import { GAME } from './config.js?v=16';
+import { connect } from './net.js?v=16';
+import { pruneSent, phoneMode, zoneSpot, lineSpot, crowdSpot, finalSpots, winner } from './logic.js?v=16';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -104,7 +104,7 @@ async function start() {
   try { sent = JSON.parse(localStorage.getItem('choc:sent:' + ROOM) || '{}'); } catch (e) { }
   const saveSent = () => { try { localStorage.setItem('choc:sent:' + ROOM, JSON.stringify(sent)); } catch (e) { } };
   let lineVal = 50, joining = false;
-  let want3d = true; try { want3d = localStorage.getItem('choc:2d') !== '1'; } catch (e) { }
+  let want3d = true; try { localStorage.removeItem('choc:2d'); } catch (e) { }
   if (params.get('2d')) want3d = false;
 
   /* ---------- salle 3D (vue allégée pour téléphone) ---------- */
@@ -112,10 +112,10 @@ async function start() {
   async function boot3d() {
     if (V || booting || !want3d) return; booting = true;
     try {
-      const mod = await import('./scene.js?v=15');
+      const mod = await import('./scene.js?v=16');
       V = makeView(mod);
     } catch (e) { console.warn('3D indisponible', e); want3d = false; }
-    booting = false; layout(); if (V) V.sync();
+    booting = false; render(); if (V) V.sync();
   }
   function makeView({ createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR }) {
     const cv = $('cv');
@@ -141,8 +141,8 @@ async function start() {
         if (a) { if (a.seat !== seat) { a.seat = seat; goHome(id); } continue; }
         av.set(id, a = { seat, team });
         const mine = id === pid, h = homeOf(id);
-        if (fresh) { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: mine ? 'Toi' : undefined, color: GAME.teams[team].color }); R.moveTo(id, DOOR.x, DOOR.z, { direct: true }); setTimeout(() => goHome(id), 500); }
-        else { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: h.x, z: h.z, yaw: Math.PI, label: mine ? 'Toi' : undefined, color: GAME.teams[team].color }); goHome(id); }
+        if (fresh) { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: mine ? 'Toi' : undefined, me: mine, color: GAME.teams[team].color }); R.moveTo(id, DOOR.x, DOOR.z, { direct: true }); setTimeout(() => goHome(id), 500); }
+        else { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: h.x, z: h.z, yaw: Math.PI, label: mine ? 'Toi' : undefined, me: mine, color: GAME.teams[team].color }); goHome(id); }
       }
       for (const id of [...av.keys()]) if (!players[id] || !players[id].name) { av.delete(id); R.removePerson(id); }
     }
@@ -158,7 +158,23 @@ async function start() {
         if (type === 'standsit') { const s = homeOf(id); if (a.v === true) R.moveTo(id, s.x, s.z + .42, { direct: true, face: Math.PI }); }
       }
     }
-    function view(k) { if (k === 'me' && av.has(pid)) R.follow(pid, 'back'); else if (k === 'front' && av.has(pid)) R.follow(pid, 'front'); else R.cam(k === 'me' || k === 'front' ? 'wide' : k); }
+    let curView = null;
+    function view(k) {
+      if (!av.has(pid)) { curView = null; R.cam('wide'); return; }
+      if (curView === k) return; curView = k; R.follow(pid, k === 'front' ? 'front' : 'back');
+    }
+    /* le projecteur fait foi : il publie les positions chaque seconde, le téléphone corrige les écarts */
+    function onPos(m) {
+      for (const [id, v] of Object.entries(m || {})) {
+        const a = R.people.get(id); if (!a || !av.has(id)) continue;
+        const [hx, hz, hs, hw, hy] = v; if (hw) continue; // en marche sur le projecteur : on attend qu'il s'arrête
+        const end = a.path.length ? a.path[a.path.length - 1] : { x: a.x, z: a.z };
+        const d = Math.hypot(end.x - hx, end.z - hz);
+        if (d > .45) { if (Math.hypot(a.x - hx, a.z - hz) > 4) R.place(id, hx, hz, hy); R.moveTo(id, hx, hz, { after: hs ? 'sit' : 'stand', face: hy }); }
+        else if (!a.path.length && !!hs !== a.sitting) { if (hs) R.moveTo(id, hx, hz, { after: 'sit' }); else R.moveTo(id, a.x, a.z, { face: hy }); }
+      }
+    }
+    net.onPos(onPos);
     function enterStep(s) {
       R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
       R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
@@ -200,14 +216,8 @@ async function start() {
       if (s.key !== ansKey) { if (unsubA) unsubA(); answers = {}; ansKey = s.key; unsubA = s.kind === 'q' ? net.onAnswers(s.key, onAnswers) : null; }
       if (s.step !== lastStep) { const first = lastStep === null; lastStep = s.step; lastPhase = null; enterStep(s); if (first) setTimeout(() => R.advance(12), 50); }
       if (s.phase !== lastPhase) { lastPhase = s.phase; enterPhase(s); }
-      // caméra
-      const t = s.q && s.q.type;
-      if (s.kind === 'final') view('final');
-      else if (s.phase === 'scene') view('scene');
-      else if (s.kind === 'q' && t === 'line') view(s.phase === 'reveal' ? 'line' : 'me');
-      else if (s.kind === 'q' && (t === 'corners' || t === 'fusion') && s.phase !== 'open') view('wide');
-      else if (s.phase === 'reveal') view('front');
-      else view('me');
+      // caméra : toujours sur son propre joueur (de face pour voir sa réaction au résultat)
+      view(s.phase === 'reveal' || s.kind === 'final' ? 'front' : 'me');
     }
     const fit = () => { const r = $('stage').getBoundingClientRect(); if (r.width > 0) R.resize(Math.round(r.width), Math.round(r.height)); };
     new ResizeObserver(fit).observe($('stage')); fit();
@@ -227,13 +237,10 @@ async function start() {
   }
 
   $('tog').onclick = () => {
-    want3d = !want3d; try { localStorage.setItem('choc:2d', want3d ? '0' : '1'); } catch (e) { }
+    want3d = !want3d;
     render(); if (V && want3d) V.sync();
   };
 
-  net.onPlayer(pid, v => { me = v; render(); });
-  net.onPlayers(v => { players = v || {}; renderHead(); if (V) V.sync(); });
-  net.onState(v => { if (v && v.gid) { const p = pruneSent(sent, v.gid); if (Object.keys(p).length !== Object.keys(sent).length) { sent = p; saveSent(); } } if (state && v && state.step !== v.step) lineVal = 50; const was = state && state.phase; state = v; if (v && v.phase === 'reveal' && was !== 'reveal') try { navigator.vibrate && navigator.vibrate(80); } catch (e) { } render(); if (V) V.sync(); });
 
   const team = () => (me && me.team) ? 1 : 0;
   function rank() {
@@ -247,7 +254,7 @@ async function start() {
     $('me').innerHTML = `${me.score || 0}<small> pts</small>`;
   }
   function layout(split) {
-    const on = !!(V && want3d && me && me.name);
+    const on = !!(want3d && me && me.name);
     document.body.classList.toggle('joined', !!(me && me.name));
     $('tog').textContent = want3d ? '2D' : '3D';
     document.body.classList.toggle('s3d', on);
@@ -279,7 +286,7 @@ async function start() {
     renderHead();
     if (!me || !me.name) { layout(false); if (!$('nm')) joinForm(); return; }
     boot3d();
-    const s = state, T = GAME.teams[team()], D = !!(V && want3d);
+    const s = state, T = GAME.teams[team()], D = !!want3d;
     big(null);
     const done = (html, split = false, c = '') => { layout(split); chip(D ? c : ''); m.innerHTML = html; };
     if (!s || s.kind === 'lobby') {
@@ -332,6 +339,9 @@ async function start() {
     m.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { const v = b.dataset.v; send(v === 'true' ? true : v === 'false' ? false : +v); });
     if ($('lr')) { $('lr').oninput = e => { lineVal = +e.target.value; $('lv').textContent = lineVal; $('lok').textContent = 'Valider ' + lineVal; }; $('lok').onclick = () => send(lineVal); }
   }
+  net.onPlayer(pid, v => { me = v; render(); });
+  net.onPlayers(v => { players = v || {}; renderHead(); if (V) V.sync(); });
+  net.onState(v => { if (v && v.gid) { const p = pruneSent(sent, v.gid); if (Object.keys(p).length !== Object.keys(sent).length) { sent = p; saveSent(); } } if (state && v && state.step !== v.step) lineVal = 50; const was = state && state.phase; state = v; if (v && v.phase === 'reveal' && was !== 'reveal') try { navigator.vibrate && navigator.vibrate(80); } catch (e) { } render(); if (V) V.sync(); });
   render();
 }
 </script>

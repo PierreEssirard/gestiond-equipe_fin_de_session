@@ -139,11 +139,11 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=15';
-import { connect } from './net.js?v=15';
-import { keyFor, spoken, NARR } from './voices.js?v=15';
-import { newGameId, answerKey, allAnswered, scoreRound, zoneSpot, lineSpot, crowdSpot, finalSpots } from './logic.js?v=15';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=15';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=16';
+import { connect } from './net.js?v=16';
+import { keyFor, spoken, NARR } from './voices.js?v=16';
+import { newGameId, answerKey, allAnswered, scoreRound, zoneSpot, lineSpot, crowdSpot, finalSpots } from './logic.js?v=16';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=16';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -570,20 +570,29 @@ addEventListener('keydown', e => {
 
 /* ---------- boucle ---------- */
 let last = performance.now();
+let posT = 0, posLast = '';
+function publishPos(force) {
+  if (force) posLast = '';
+  const m = {};
+  avatars.forEach((x, pid) => { const a = R.people.get(pid); if (a) m[pid] = [Math.round(a.x * 100) / 100, Math.round(a.z * 100) / 100, a.sitting ? 1 : 0, a.path.length ? 1 : 0, Math.round(a.tyaw * 100) / 100]; });
+  const j = JSON.stringify(m); if (j !== posLast) { posLast = j; net.setPos(m); }
+}
 function frame(now) {
-  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
   if (S.timer) {
-    S.timer.left -= dt; const l = Math.max(0, S.timer.left);
+    S.timer.left -= Math.min(raw, 1); const l = Math.max(0, S.timer.left);
     $('arc').style.strokeDashoffset = 213.6 * (1 - l / S.timer.total); $('ringT').textContent = Math.ceil(l); $('ring').classList.toggle('low', l <= 5);
     if (S.timer.left <= 0) closeQ();
   }
   if (S.t0 !== null) { const e = (now - S.t0) / 1000, f = v => String(Math.floor(v)).padStart(2, '0'); $('clock').innerHTML = `${f(e / 60)}:${f(e % 60)}<em>sur ${f(GAME.minutes)}:00</em>`; $('clock').style.color = e > GAME.minutes * 60 ? '#ff8a7a' : ''; }
-  if (!window.__pause) R.tick(dt); placeBubbles();
+  if (!window.__pause) { if (raw > .06) R.advance(Math.min(raw, 2) - dt); R.tick(dt); } /* déplacements en temps réel même à faible FPS */
+  placeBubbles();
+  if (now - posT > 1000) { posT = now; publishPos(); }
   requestAnimationFrame(frame);
 }
 net.onPlayers(v => { players = v || {}; syncAvatars(); renderHUD(); if (cur().k === 'lobby') renderLobby(); });
 go(0); requestAnimationFrame(t => { last = t; frame(t); });
-window.__host = { addBots, next, go, S, R, cur, steps, players: () => players, answers: () => answers, reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
+window.__host = { addBots, next, go, S, R, cur, steps, players: () => players, answers: () => answers, publishPos, reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
 </script>
 </body>
 </html>

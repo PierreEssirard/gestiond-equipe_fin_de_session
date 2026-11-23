@@ -113,9 +113,31 @@ try {
     });
     if (out.length) throw new Error('caméra hors de la salle : ' + out.join(' ; '));
   });
+  await check('le téléphone suit son propre joueur, marqué d’un anneau', async () => {
+    const r = await A.evaluate(() => {
+      const R = __phone.R; __phone.snap(60);
+      const me = R.people.get('pA'), other = R.people.get('pB'), c = R.camera.position;
+      return { ring: !!me.ring, otherRing: !!other.ring, d: Math.hypot(c.x - me.x, c.z - me.z) };
+    });
+    if (!r.ring || r.otherRing) throw new Error('anneau mal placé');
+    if (r.d > 3.6) throw new Error(`caméra à ${r.d.toFixed(1)} m de son joueur`);
+  });
+  await check('le téléphone se recale sur les positions du projecteur', async () => {
+    await A.evaluate(() => __phone.R.place('pB', 0, 1.2, 0));   // décalage volontaire sur le téléphone
+    await host.evaluate(() => __host.publishPos(true));
+    await A.waitForTimeout(800); await A.evaluate(() => __phone.R.advance(15));
+    const h = await host.evaluate(() => { const a = __host.R.people.get('pB'); return [a.x, a.z]; });
+    const p = await A.evaluate(() => { const a = __phone.R.people.get('pB'); return [a.x, a.z]; });
+    const d = Math.hypot(h[0] - p[0], h[1] - p[1]); if (d > .1) throw new Error(`écart restant ${d.toFixed(2)} m`);
+  });
   await check('bouton 2D puis 3D : on revient bien à la 3D', async () => {
     await A.click('#tog'); await wait(A, () => !document.body.classList.contains('s3d') && document.getElementById('tog').textContent === '3D');
     await A.click('#tog'); await wait(A, () => document.body.classList.contains('s3d') && document.getElementById('tog').textContent === '2D');
+  });
+  await check('la 3D s’affiche par défaut, même après être passé en 2D et avoir rechargé', async () => {
+    await A.click('#tog'); await wait(A, () => !document.body.classList.contains('s3d'));
+    await A.evaluate(() => localStorage.setItem('choc:2d', '1')); // ancien réglage mémorisé
+    await A.reload(); await wait(A, () => document.body.classList.contains('s3d') && window.__phone, null, 30000);
   });
   await host.evaluate(() => __host.next());
   await check('révélation : points affichés sur les téléphones', async () => { await wait(A, () => /\+\d+ pts/.test(document.getElementById('big').innerText)); await wait(B, () => /Raté/.test(document.getElementById('big').innerText)); });

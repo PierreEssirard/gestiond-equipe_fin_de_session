@@ -295,6 +295,12 @@ export function createClassroom(canvas, opts = {}) {
     const root = new THREE.Group(), body = new THREE.Group(); root.add(body); scene.add(root);
     const a = { slot: people.size & 1, fast: !!o.fast, id, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
     if (o.label) { a.label = labelSprite(o.label, o.color || '#fff'); root.add(a.label); }
+    if (o.me) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(.36, .5, 48), new THREE.MeshBasicMaterial({ color: '#ffd34d', transparent: true, opacity: .95, depthWrite: false, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.y = .02; ring.renderOrder = 4; root.add(ring); a.ring = ring;
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(.11, .22, 4), new THREE.MeshBasicMaterial({ color: '#ffd34d' }));
+      arrow.rotation.x = Math.PI; arrow.position.y = 2.25; root.add(arrow); a.arrow = arrow;
+    }
     if (o.color) { const d = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: .55, depthWrite: false })); d.rotation.x = -Math.PI / 2; d.position.y = .015; root.add(d); a.disc = d; }
     Promise.all([loadModel(look.model || 'kate'), ready]).then(([g]) => {
       if (!people.has(id)) return;
@@ -333,7 +339,8 @@ export function createClassroom(canvas, opts = {}) {
     let dy = a.tyaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); a.yaw += dy * Math.min(1, dt * 7);
     a.sit = lerp(a.sit, a.sitting ? 1 : 0, Math.min(1, dt * 5));
     a.root.position.set(a.x, -0.46 * a.sit, a.z); a.root.rotation.y = a.yaw;
-    if (a.label) a.label.position.y = 1.98;
+    if (a.label) a.label.position.y = a.arrow ? 2.55 : 1.98;
+    if (a.ring) { const k = 1 + Math.sin(T * 4) * .08; a.ring.scale.set(k, k, 1); a.arrow.position.y = 2.25 - .46 * a.sit + Math.sin(T * 3) * .06; a.arrow.rotation.y = T * 1.5; if (a.label) a.label.position.y = 2.55 - .46 * a.sit; }
     if (a.disc) a.disc.position.y = .015 + .46 * a.sit;
     if (!a.mixer) return;
     const r = a.react && a.react.until > T ? a.react.kind : null;
@@ -411,7 +418,7 @@ export function createClassroom(canvas, opts = {}) {
   function applyRes() { const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } }
   function resize(w, h) { VW = w; VH = h; applyRes(); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
   /* fait avancer les déplacements sans dessiner (rattrapage après une pause) */
-  function advance(sec) { for (let t = 0; t < sec; t += .1) { T += .1; people.forEach(a => animate(a, .1)); } }
+  function advance(sec) { if (!(sec > 0)) return; const n = Math.ceil(sec / .1), d = sec / n; for (let i = 0; i < n; i++) { T += d; people.forEach(a => animate(a, d)); } }
   function tick(dt) {
     renderer.info.reset(); T += dt;
     people.forEach(a => animate(a, dt));
