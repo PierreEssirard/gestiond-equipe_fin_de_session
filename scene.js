@@ -420,21 +420,19 @@ export function createClassroom(canvas, opts = {}) {
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
     adapt();
   }
-  /* qualité adaptative : vise 50+ images/s en baissant d'abord la résolution interne, puis les effets */
-  let fpsT0 = performance.now(), fpsN = 0, fps = 60, auto = true;
+  /* qualité adaptative : baisse la résolution interne puis les effets si l'ordinateur peine,
+     et annule toute baisse qui n'apporte pas de gain (écran plafonné à 30 ou 60 Hz, onglet en arrière-plan…) */
+  let fpsT0 = performance.now(), fpsN = 0, fps = 60, auto = true, last = null, capped = false;
+  const levels = [() => { rs = 1; }, () => { rs = .85; }, () => { rs = .7; }, () => { rs = .7; if (gtao) gtao.enabled = false; }, () => { rs = .6; if (gtao) gtao.enabled = false; if (bloom) bloom.enabled = false; }];
+  let lvl = 0;
+  function setLevel(n) { lvl = n; if (gtao) gtao.enabled = true; if (bloom) bloom.enabled = true; levels[n](); applyRes(); }
   function adapt() {
     fpsN++; const now = performance.now(); if (now - fpsT0 < 3000) return;
     fps = fpsN * 1000 / (now - fpsT0); fpsN = 0; fpsT0 = now;
-    if (!auto || !hq) return;
-    if (fps < 45) {
-      if (rs > .65) { rs = Math.max(.6, rs - .15); applyRes(); }
-      else if (gtao && gtao.enabled) gtao.enabled = false;
-      else if (bloom && bloom.enabled) bloom.enabled = false;
-    } else if (fps > 58) {
-      if (bloom && !bloom.enabled) bloom.enabled = true;
-      else if (gtao && !gtao.enabled && rs >= .75) gtao.enabled = true;
-      else if (rs < 1) { rs = Math.min(1, rs + .1); applyRes(); }
-    }
+    if (!auto || !hq || document.hidden) return;
+    if (last) { const gain = fps / last.fps; if (gain < 1.12) { setLevel(last.lvl); capped = true; } last = null; return; }
+    if (fps < 42 && lvl < levels.length - 1 && !capped) { last = { fps, lvl }; setLevel(lvl + 1); }
+    else if (fps > 57 && lvl > 0) { capped = false; setLevel(lvl - 1); }
   }
   function setZones(show, hi = -1) { zoneMeshes.forEach((m, i) => { m.visible = show; m.userData.hi = i === hi; m.material.opacity = hi < 0 || i === hi ? 1 : .3; }); }
   function setLine(show) { lineMesh.visible = show; }
