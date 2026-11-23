@@ -17,13 +17,33 @@
    LAYOUT une colonne : bandeau équipe, question, boutons jusqu'en bas */
 :root{color-scheme:dark;--bg:#0c1113;--card:#161d21;--edge:rgba(255,255,255,.12);--ink:#f3f5f6;--mut:#a3afb5;--acc:#ffd34d;--ok:#2fb36a;--ko:#d8453a;--tc:#555}
 *{box-sizing:border-box;min-width:0}
-html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--ink);font:500 17px/1.4 Barlow,system-ui,sans-serif;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
-header{display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--tc);color:#fff}
-header b{font:800 22px/1 "Barlow Condensed",sans-serif;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-header span{font:700 15px/1.1 Barlow,sans-serif;text-align:right}
-header strong{display:block;font:800 24px/1 "Barlow Condensed",sans-serif}
-main{flex:1;display:flex;flex-direction:column;gap:14px;padding:18px 16px 20px;overflow:auto}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font:500 17px/1.4 Barlow,system-ui,sans-serif;display:flex;flex-direction:column;height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top)) 14px 8px;background:var(--tc);color:#fff;flex:none}
+header b{font:800 21px/1 "Barlow Condensed",sans-serif;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header span{font:800 21px/1 "Barlow Condensed",sans-serif;text-align:right;font-variant-numeric:tabular-nums}
+header span small{font:600 13px Barlow,sans-serif;opacity:.85;margin-right:6px}
+#stage{position:relative;flex:1 1 auto;min-height:0;display:none;background:#0c1113;overflow:hidden}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+body.s3d #stage{display:block}
+body.s3d main{flex:0 0 auto;max-height:46%}
+body.s3d.split #stage{flex:0 0 24%}
+body.s3d.split h2{font-size:22px}
+body.s3d.split main{gap:9px;padding-top:12px}
+body.s3d.split main{flex:1 1 auto;max-height:none}
+#load{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut);font-weight:600;transition:opacity .6s}
+#load.off{opacity:0;pointer-events:none}
+#chip{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:7px 14px;border-radius:99px;background:rgba(12,17,19,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font:700 15px/1.2 Barlow,sans-serif;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
+#chip:empty{opacity:0}
+#big{position:absolute;left:0;right:0;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;opacity:0;transform:translateY(12px);transition:opacity .4s,transform .4s;text-shadow:0 2px 14px rgba(0,0,0,.7)}
+#big.on{opacity:1;transform:none}
+#big .ok{color:var(--ok)}#big .ko{color:var(--ko)}
+#big .r{font:800 46px/1 "Barlow Condensed",sans-serif}
+#big .p{font:800 30px/1 "Barlow Condensed",sans-serif;color:var(--acc)}
+#tog{position:absolute;right:10px;bottom:10px;min-height:0;padding:6px 10px;font:700 12px Barlow,sans-serif;border-radius:99px;background:rgba(12,17,19,.6);color:var(--mut);display:none}
+body.s3d #tog{display:block}
+main{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px 16px 16px;overflow:auto}
+.card{display:flex;flex-direction:column;gap:6px}
 h1{margin:0;font:800 34px/1.02 "Barlow Condensed",sans-serif;text-wrap:balance}
 h2{margin:0;font:700 25px/1.12 "Barlow Condensed",sans-serif;text-wrap:balance}
 .kick{color:var(--acc);font-weight:700;font-size:15px}
@@ -33,7 +53,7 @@ input[type=text]:focus{outline:none;border-color:var(--acc)}
 button{font:700 19px/1.15 Barlow,sans-serif;min-height:56px;padding:12px 16px;border-radius:14px;border:0;background:var(--acc);color:#111;cursor:pointer;touch-action:manipulation}
 button:active{transform:scale(.98)}
 button:disabled{opacity:.45}
-.grid{display:grid;gap:10px;flex:1;grid-template-rows:repeat(4,minmax(64px,1fr))}
+.grid{display:grid;gap:8px;flex:1;grid-template-rows:repeat(4,minmax(52px,1fr))}
 .ans{display:grid;grid-template-columns:52px minmax(0,1fr);gap:12px;align-items:center;text-align:left;background:var(--c);color:#111;font-size:18px;padding:10px 14px}
 .ans b{display:grid;place-items:center;width:52px;height:52px;border-radius:10px;background:rgba(0,0,0,.18);font:800 32px/1 "Barlow Condensed",sans-serif}
 .vf{display:grid;grid-template-rows:1fr 1fr;gap:12px;flex:1}
@@ -56,11 +76,13 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 </head>
 <body>
 <header id="hd"><b>Choc des cultures</b><span id="me"></span></header>
+<div id="stage"><canvas id="cv"></canvas><div id="load">Entrée dans la salle…</div><div id="chip"></div><div id="big"><div class="r" id="bigR"></div><div class="p" id="bigP"></div></div><button id="tog">Vue 2D</button></div>
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
-<div class="foot" id="ft"></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=13';
-import { connect } from './net.js?v=13';
+import { GAME } from './config.js?v=14';
+import { connect } from './net.js?v=14';
+import { pruneSent, phoneMode } from './logic.js?v=14';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -73,19 +95,137 @@ if (!ROOM) {
 } else start();
 
 async function start() {
-  $('ft').textContent = 'Partie ' + ROOM;
   const net = await connect(ROOM);
-  if (net.mode === 'local') { const w = document.createElement('div'); w.style.cssText = 'background:#ffd34d;color:#111;font:700 14px/1.3 Barlow,sans-serif;padding:10px 16px;text-align:center'; w.textContent = 'Mode répétition : Firebase n’est pas configuré, ce téléphone n’est pas relié à l’écran du projecteur.'; document.body.insertBefore(w, document.body.firstChild.nextSibling); }
+  if (net.mode === 'local') { const w = document.createElement('div'); w.style.cssText = 'background:#ffd34d;color:#111;font:700 13px/1.3 Barlow,sans-serif;padding:8px 14px;text-align:center;flex:none'; w.textContent = 'Mode répétition : ce téléphone n’est pas relié au projecteur.'; document.body.insertBefore(w, $('stage')); }
   let pid; try { pid = localStorage.getItem('choc:pid:' + ROOM); } catch (e) { }
   if (!pid) { pid = 'p' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('choc:pid:' + ROOM, pid); } catch (e) { } }
+  if (params.get('pid')) pid = params.get('pid');
   let me = null, players = {}, state = null, sent = {};
   try { sent = JSON.parse(localStorage.getItem('choc:sent:' + ROOM) || '{}'); } catch (e) { }
   const saveSent = () => { try { localStorage.setItem('choc:sent:' + ROOM, JSON.stringify(sent)); } catch (e) { } };
   let lineVal = 50, joining = false;
+  let want3d = true; try { want3d = localStorage.getItem('choc:2d') !== '1'; } catch (e) { }
+  if (params.get('2d')) want3d = false;
+
+  /* ---------- salle 3D (vue allégée pour téléphone) ---------- */
+  let V = null, booting = false;
+  async function boot3d() {
+    if (V || booting || !want3d) return; booting = true;
+    try {
+      const mod = await import('./scene.js?v=14');
+      V = makeView(mod);
+    } catch (e) { console.warn('3D indisponible', e); want3d = false; }
+    booting = false; layout(); if (V) V.sync();
+  }
+  function makeView({ createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR }) {
+    const cv = $('cv');
+    const R = createClassroom(cv, { lite: true, labelScale: .055, corners: GAME.corners, preload: ['louise', 'joe', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
+    R.addPerson('M', { model: 'louise' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2, fast: true });
+    R.addPerson('P', { model: 'joe' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2, fast: true });
+    R.addPerson('K', { model: 'leonard' }, { x: 3.0, z: -4.3, yaw: Math.PI / 2 });
+    R.addPerson('Mi', { model: 'ben' }, { x: 4.4, z: -4.3, yaw: -Math.PI / 2 });
+    R.setVisible('K', false); R.setVisible('Mi', false);
+    R.ready.then(() => setTimeout(() => $('load').classList.add('off'), 600));
+    const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+    const MODELS = ['s_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'];
+    const av = new Map(); // pid -> {seat, team}
+    let lastStep = null, lastPhase = null, unsubA = null, ansKey = null, answers = {};
+    const live = () => Object.entries(players).filter(([, p]) => p && p.name);
+    const homeOf = pid => { const a = av.get(pid); if (a && a.seat !== null && SEATS[a.seat]) return SEATS[a.seat]; const h = hash(pid); return { x: -5 + (h % 100) / 10, z: 5.2 + (h >>> 8) % 3 * .4 }; };
+    function goHome(pid, delay = 0) { const a = av.get(pid); if (!a) return; if (a.seat !== null && SEATS[a.seat]) R.sitAt(pid, SEATS[a.seat], delay); else { const h = homeOf(pid); R.moveTo(pid, h.x, h.z, { face: Math.PI, delay }); } }
+    function syncPeople() {
+      const fresh = state && state.kind === 'lobby';
+      for (const [id, p] of live()) {
+        const team = p.team ? 1 : 0, seat = Number.isInteger(p.seat) ? p.seat : null;
+        let a = av.get(id);
+        if (a) { if (a.seat !== seat) { a.seat = seat; goHome(id); } continue; }
+        av.set(id, a = { seat, team });
+        const mine = id === pid, h = homeOf(id);
+        if (fresh) { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: mine ? 'Toi' : undefined, color: GAME.teams[team].color }); R.moveTo(id, DOOR.x, DOOR.z, { direct: true }); setTimeout(() => goHome(id), 500); }
+        else { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: h.x, z: h.z, yaw: Math.PI, label: mine ? 'Toi' : undefined, color: GAME.teams[team].color }); goHome(id); }
+      }
+      for (const id of [...av.keys()]) if (!players[id] || !players[id].name) { av.delete(id); R.removePerson(id); }
+    }
+    const jit = (z, r) => { const a = Math.random() * 6.28, d = Math.sqrt(Math.random()) * r; return [z.x + Math.cos(a) * d, z.z + Math.sin(a) * d]; };
+    function onAnswers(v) {
+      const prev = answers; answers = v || {};
+      if (!state || state.kind !== 'q') return;
+      const type = state.q.type;
+      for (const [id, a] of Object.entries(answers)) {
+        if (prev[id] && prev[id].v === a.v) continue;
+        if (!av.has(id)) continue;
+        if (type === 'corners' || type === 'fusion') { const [x, z] = jit(ZONES[a.v] || ZONES[0], .8); R.moveTo(id, x, z, { face: Math.random() * 6.28 }); }
+        if (type === 'line') R.moveTo(id, lineX(+a.v) + (Math.random() - .5) * .3, LINE_Z - .35 + Math.random() * .7, { face: Math.PI });
+        if (type === 'standsit') { const s = homeOf(id); if (a.v === true) R.moveTo(id, s.x, s.z + .42, { direct: true, face: Math.PI }); }
+      }
+    }
+    function view(k) { if (k === 'me' && av.has(pid)) R.follow(pid, 'back'); else if (k === 'front' && av.has(pid)) R.follow(pid, 'front'); else R.cam(k === 'me' || k === 'front' ? 'wide' : k); }
+    function enterStep(s) {
+      R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
+      R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
+      if (s.kind === 'lobby') { av.forEach((a, id) => goHome(id)); R.setScreen({ top: GAME.title, main: 'La partie va commencer', foot: 'Code : ' + ROOM }); }
+      if (s.kind === 'intro') { av.forEach((a, id) => goHome(id, Math.random() * .8)); R.setScreen({ top: `Activité ${s.act.i + 1} · ${s.act.name}`, main: s.act.rule, foot: '' }); if (s.act.type === 'corners' || s.act.type === 'fusion') R.setZones(true); if (s.act.type === 'line') R.setLine(true); }
+      if (s.kind === 'q') {
+        const t = s.q.type; R.setScreen({ top: `${s.act.name} · question ${s.q.idx + 1}`, main: s.q.text, foot: 'Répondez sur votre téléphone' });
+        if (t === 'corners' || t === 'fusion') R.setZones(true);
+        if (t === 'line') R.setLine(true);
+        if (t === 'fusion') av.forEach((a, id) => R.moveTo(id, -3.5 + Math.random() * 7, -3.4 - Math.random() * 1.2, { face: 0, delay: Math.random() * 1.5 }));
+        if (t !== 'fusion' && t !== 'line' && t !== 'corners') av.forEach((a, id) => goHome(id));
+      }
+      if (s.kind === 'final') {
+        const sc = [0, 1].map(t => { const L = live().filter(([, p]) => (p.team ? 1 : 0) === t); return L.length ? L.reduce((x, [, p]) => x + (p.score || 0), 0) / L.length : 0; });
+        const w = Math.round(sc[0]) === Math.round(sc[1]) ? -1 : sc[0] > sc[1] ? 0 : 1; let i0 = 0, i1 = 0;
+        av.forEach((a, id) => { const k = a.team ? i1++ : i0++; R.moveTo(id, (a.team ? 1 : -1) * (1 + (k % 6) * .6), -2.9 - Math.floor(k / 6) * .55, { face: 0, delay: Math.random() }); });
+        setTimeout(() => { if (state && state.kind === 'final') av.forEach((a, id) => R.react(id, w < 0 || a.team === w ? 'cheer' : 'sad', 6)); }, 3200);
+        R.setScreen({ top: 'Résultat final', main: w < 0 ? 'Égalité : la fusion est réussie' : GAME.teams[w].name + ' remporte la partie', foot: 'Merci d’avoir joué · équipe Charlie' });
+      }
+    }
+    function enterPhase(s) {
+      if (s.phase === 'scene') { R.setVisible('K', true); R.setVisible('Mi', true); R.place('K', 3.0, -4.3, Math.PI / 2); R.place('Mi', 4.4, -4.3, -Math.PI / 2); R.talk('K', 4); setTimeout(() => R.talk('Mi', 4), 4200); }
+      if (s.phase === 'reveal') {
+        const t = s.q.type, rv = s.reveal || {};
+        if ((t === 'corners' || t === 'fusion') && rv.ok !== null) R.setZones(true, rv.ok);
+        if (t === 'line' && rv.val !== null) R.setFlag(rv.val);
+        const tryReact = (n = 0) => {
+          let pending = 0;
+          for (const [id, p] of live()) { if (!answers[id]) continue; const l = p.last; if (!l || l.key !== s.key) { pending++; continue; } R.react(id, l.ok ? 'cheer' : 'sad', 4); }
+          if (pending && n < 6) setTimeout(() => tryReact(n + 1), 500);
+        };
+        setTimeout(tryReact, 300);
+        const f = s.result && s.result.firsts; if (t === 'race' && f) f.forEach((id, i) => setTimeout(() => R.moveTo(id, i ? 1.2 : -.4, -4.6, { face: 0 }), 600));
+        setTimeout(() => { R.talk('P', 3.5); setTimeout(() => R.talk('M', 3), 3600); }, 1400);
+      }
+    }
+    function sync() {
+      syncPeople();
+      const s = state; if (!s) return;
+      if (s.key !== ansKey) { if (unsubA) unsubA(); answers = {}; ansKey = s.key; unsubA = s.kind === 'q' ? net.onAnswers(s.key, onAnswers) : null; }
+      if (s.step !== lastStep) { lastStep = s.step; lastPhase = null; enterStep(s); }
+      if (s.phase !== lastPhase) { lastPhase = s.phase; enterPhase(s); }
+      // caméra
+      const t = s.q && s.q.type;
+      if (s.kind === 'final') view('final');
+      else if (s.phase === 'scene') view('scene');
+      else if (s.kind === 'q' && t === 'line') view(s.phase === 'reveal' ? 'line' : 'me');
+      else if (s.kind === 'q' && (t === 'corners' || t === 'fusion') && s.phase !== 'open') view('wide');
+      else if (s.phase === 'reveal') view('front');
+      else view('me');
+    }
+    const fit = () => { const r = $('stage').getBoundingClientRect(); if (r.width > 0) R.resize(Math.round(r.width), Math.round(r.height)); };
+    new ResizeObserver(fit).observe($('stage')); fit();
+    R.cam('wide', true);
+    let last = performance.now();
+    const frame = t => { const dt = Math.min(.05, (t - last) / 1000); last = t; if (!document.hidden && document.body.classList.contains('s3d') && !window.__pause) R.tick(dt); requestAnimationFrame(frame); };
+    requestAnimationFrame(frame);
+    window.__phone = { R, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return cv.toDataURL('image/jpeg', .85); } };
+    return { sync, R };
+  }
+
+  $('tog').onclick = () => { want3d = false; try { localStorage.setItem('choc:2d', '1'); } catch (e) { } layout(); render(); };
 
   net.onPlayer(pid, v => { me = v; render(); });
-  net.onPlayers(v => { players = v || {}; renderHead(); });
-  net.onState(v => { if (state && v && state.step !== v.step) lineVal = 50; const was = state && state.phase; state = v; if (v && v.phase === 'reveal' && was !== 'reveal') try { navigator.vibrate && navigator.vibrate(80); } catch (e) { } render(); });
+  net.onPlayers(v => { players = v || {}; renderHead(); if (V) V.sync(); });
+  net.onState(v => { if (v && v.gid) { const p = pruneSent(sent, v.gid); if (Object.keys(p).length !== Object.keys(sent).length) { sent = p; saveSent(); } } if (state && v && state.step !== v.step) lineVal = 50; const was = state && state.phase; state = v; if (v && v.phase === 'reveal' && was !== 'reveal') try { navigator.vibrate && navigator.vibrate(80); } catch (e) { } render(); if (V) V.sync(); });
 
   const team = () => (me && me.team) ? 1 : 0;
   function rank() {
@@ -95,10 +235,16 @@ async function start() {
   function renderHead() {
     if (!me || !me.name) { document.body.style.setProperty('--tc', '#1c2429'); $('me').innerHTML = ''; return; }
     const T = GAME.teams[team()]; document.body.style.setProperty('--tc', T.color);
-    const { r, n } = rank();
-    $('hd').querySelector('b').textContent = me.name;
-    $('me').innerHTML = `${esc(T.name)} · ${r}<sup>e</sup>/${n}<strong>${me.score || 0} pts</strong>`;
+    $('hd').querySelector('b').textContent = me.name + ' · ' + T.name;
+    $('me').innerHTML = `${me.score || 0}<small> pts</small>`;
   }
+  function layout(split) {
+    const on = !!(V && want3d && me && me.name);
+    document.body.classList.toggle('s3d', on);
+    document.body.classList.toggle('split', on && !!split);
+  }
+  const chip = t => { $('chip').textContent = t || ''; };
+  function big(r, p, cls) { const b = $('big'); if (!r) { b.classList.remove('on'); return; } $('bigR').textContent = r; $('bigR').className = 'r ' + (cls || ''); $('bigP').textContent = p || ''; b.classList.add('on'); }
 
   function joinForm() {
     m.innerHTML = `<h1>Choc des cultures</h1><p class="mut">Le jeu de l’équipe Charlie. Entrez votre prénom pour rejoindre la partie.</p>
@@ -106,7 +252,7 @@ async function start() {
     const go = async () => {
       const name = $('nm').value.trim().replace(/\s+/g, ' ').slice(0, 18); if (!name || joining) return; joining = true;
       const c = [0, 0]; Object.values(players).forEach(p => { if (p && p.name) c[p.team ? 1 : 0]++; });
-      await net.join(pid, { name, team: c[0] <= c[1] ? 0 : 1, score: 0 });
+      await net.join(pid, { name, team: c[0] <= c[1] ? 0 : 1, score: 0, joined: Date.now() });
       joining = false;
     };
     $('jn').onclick = go; $('nm').onkeydown = e => { if (e.key === 'Enter') go(); };
@@ -117,43 +263,62 @@ async function start() {
     sent[state.key] = v; saveSent(); net.answer(state.key, pid, v); try { navigator.vibrate && navigator.vibrate(30); } catch (e) { } render();
   }
   const label = v => { const q = state.q; if (q.type === 'line') return v; if (q.type === 'standsit') return v ? 'Vrai' : 'Faux'; return GAME.corners[v].l + ' · ' + q.opts[v]; };
+  const short = v => { const q = state.q; if (q.type === 'line') return String(v); if (q.type === 'standsit') return v ? 'Vrai' : 'Faux'; return GAME.corners[v].l; };
 
   function render() {
     renderHead();
-    if (!me || !me.name) { if (!$('nm')) joinForm(); return; }
-    const s = state, T = GAME.teams[team()];
-    if (!s || s.kind === 'lobby') { m.innerHTML = `<div class="state"><div class="team"><span>Vous jouez pour</span><strong>${esc(T.name)}</strong><span>${esc(T.tag)}</span></div><h2>Regardez l’écran, la partie va commencer.</h2><p class="mut">Gardez cette page ouverte.</p></div>`; return; }
-    if (s.kind === 'intro') { m.innerHTML = `<div class="kick">Activité ${s.act.i + 1} sur ${s.act.n}</div><h1>${esc(s.act.name)}</h1><p>${esc(s.act.rule)}</p><div class="state"><span class="pill">Préparez-vous</span></div>`; return; }
+    if (!me || !me.name) { layout(false); if (!$('nm')) joinForm(); return; }
+    boot3d();
+    const s = state, T = GAME.teams[team()], D = !!(V && want3d);
+    big(null);
+    const done = (html, split = false, c = '') => { layout(split); chip(D ? c : ''); m.innerHTML = html; };
+    if (!s || s.kind === 'lobby') {
+      if (D) return done(`<div class="card"><h2>Vous êtes dans la salle</h2><p class="mut">Votre équipe : <b style="color:${T.color}">${esc(T.name)}</b> · ${esc(T.tag)}. Regardez l’écran.</p></div>`, false, 'En attente du départ');
+      return done(`<div class="state"><div class="team"><span>Vous jouez pour</span><strong>${esc(T.name)}</strong><span>${esc(T.tag)}</span></div><h2>Regardez l’écran, la partie va commencer.</h2><p class="mut">Gardez cette page ouverte.</p></div>`);
+    }
+    if (s.kind === 'intro') {
+      if (D) return done(`<div class="card"><div class="kick">Activité ${s.act.i + 1} sur ${s.act.n}</div><h2>${esc(s.act.name)}</h2><p class="mut">${esc(s.act.rule)}</p></div>`, false, 'Écoutez la consigne');
+      return done(`<div class="kick">Activité ${s.act.i + 1} sur ${s.act.n}</div><h1>${esc(s.act.name)}</h1><p>${esc(s.act.rule)}</p><div class="state"><span class="pill">Préparez-vous</span></div>`);
+    }
     if (s.kind === 'final') {
       const { r, n } = rank();
-      m.innerHTML = `<div class="state"><span class="kick">Résultat final</span><div class="mega">${r}<sup style="font-size:.4em">e</sup></div><h2>sur ${n} joueurs · ${me.score || 0} points</h2><div class="team"><span>Votre équipe</span><strong>${esc(T.name)}</strong></div><p class="mut">Merci d’avoir joué ! Regardez l’écran pour le résultat des équipes.</p></div>`; return;
+      if (D) { done(`<div class="card"><h2>${r}<sup>e</sup> sur ${n} · ${me.score || 0} points</h2><p class="mut">Merci d’avoir joué !</p></div>`, false, 'Résultat final'); return; }
+      return done(`<div class="state"><span class="kick">Résultat final</span><div class="mega">${r}<sup style="font-size:.4em">e</sup></div><h2>sur ${n} joueurs · ${me.score || 0} points</h2><div class="team"><span>Votre équipe</span><strong>${esc(T.name)}</strong></div><p class="mut">Merci d’avoir joué ! Regardez l’écran pour le résultat des équipes.</p></div>`);
     }
     const q = s.q, mine = sent[s.key];
-    let h = `<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div><h2>${esc(q.text)}</h2>`;
-    if (s.phase === 'scene') { m.innerHTML = `<div class="kick">${esc(s.act.name)}</div><div class="state"><span class="pill">Scène</span><h2>Regardez la scène à l’écran…</h2><p class="mut">La question arrive juste après. Soyez rapide !</p></div>`; return; }
+    if (s.phase === 'scene') {
+      if (D) return done(`<div class="card"><p class="mut">Regardez la scène. La question arrive juste après : soyez rapide !</p></div>`, false, 'Scène · Klaus et Mike');
+      return done(`<div class="kick">${esc(s.act.name)}</div><div class="state"><span class="pill">Scène</span><h2>Regardez la scène à l’écran…</h2><p class="mut">La question arrive juste après. Soyez rapide !</p></div>`);
+    }
     if (s.phase === 'reveal') {
-      const L = me.last && me.last.key === s.key ? me.last : null, R = s.reveal || {};
+      const L = me.last && me.last.key === s.key ? me.last : null, Rv = s.reveal || {};
       const good = L ? L.ok : false;
-      const ans = q.type === 'line' ? R.val : q.type === 'standsit' ? (R.ok ? 'Vrai' : 'Faux') : GAME.corners[R.ok].l + ' · ' + q.opts[R.ok];
-      h = `<div class="kick">${esc(s.act.name)}</div><div class="state"><div class="mega ${mine === undefined ? '' : good ? 'ok' : 'ko'}">${mine === undefined ? 'Pas de réponse' : good ? 'Bien joué' : 'Raté'}</div>
+      const ans = q.type === 'line' ? Rv.val : q.type === 'standsit' ? (Rv.ok ? 'Vrai' : 'Faux') : GAME.corners[Rv.ok].l + ' · ' + q.opts[Rv.ok];
+      const head = mine === undefined ? 'Pas de réponse' : good ? 'Bien joué' : 'Raté';
+      if (D) {
+        done(`<div class="card"><p><b>${q.type === 'line' ? 'Score réel' : 'Réponse'} : ${esc(ans)}</b>${q.type === 'fusion' && s.result ? ` · ${s.result.fusion ? 'fusion réussie' : 'fusion ratée'}` : ''}</p></div>`, false, '');
+        big((mine === undefined ? '' : good ? '✓ ' : '✗ ') + head, L ? '+' + L.pts + ' pts' : '', mine === undefined ? '' : good ? 'ok' : 'ko'); return;
+      }
+      return done(`<div class="kick">${esc(s.act.name)}</div><div class="state"><div class="mega ${mine === undefined ? '' : good ? 'ok' : 'ko'}">${head}</div>
         <h2>${L ? '+' + L.pts + ' points' : 'Calcul des points…'}</h2>${mine !== undefined ? `<p class="mut">Votre réponse : ${esc(label(mine))}</p>` : ''}
         ${q.type === 'fusion' && s.result ? `<span class="pill">${s.result.fusion ? 'Fusion réussie' : 'Fusion ratée'}</span>` : ''}
-        <div class="why"><b>${q.type === 'line' ? 'Score réel' : 'Bonne réponse'} : ${esc(ans)}.</b> ${esc(R.why || '')}</div></div>`;
-      m.innerHTML = h; return;
+        <div class="why"><b>${q.type === 'line' ? 'Score réel' : 'Bonne réponse'} : ${esc(ans)}.</b> ${esc(Rv.why || '')}</div></div>`);
     }
-    if (mine !== undefined || s.phase === 'closed') {
-      h += `<div class="state"><span class="pill">${mine !== undefined ? 'Réponse envoyée' : 'Temps écoulé'}</span>${mine !== undefined ? `<h2>${esc(label(mine))}</h2>` : ''}<p class="mut">${q.type === 'fusion' ? 'Convainquez votre équipe… et l’autre !' : 'Regardez votre avatar dans la salle.'}</p></div>`;
-      m.innerHTML = h; return;
+    const mode = phoneMode(s, sent, me);
+    if (mode === 'sent' || mode === 'closed' || mode === 'wait') {
+      if (D) return done(`<div class="card"><p class="mut">${q.type === 'fusion' ? 'Convainquez votre équipe… et l’autre !' : 'Votre avatar se place dans la salle.'}</p></div>`, false, mode === 'sent' ? '✓ Envoyé : ' + short(mine) : mode === 'closed' ? 'Temps écoulé' : 'Un instant…');
+      return done(`<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div><h2>${esc(q.text)}</h2><div class="state"><span class="pill">${mode === 'sent' ? 'Réponse envoyée' : mode === 'closed' ? 'Temps écoulé' : 'Un instant…'}</span>${mine !== undefined ? `<h2>${esc(label(mine))}</h2>` : ''}<p class="mut">${q.type === 'fusion' ? 'Convainquez votre équipe… et l’autre !' : 'Regardez votre avatar dans la salle.'}</p></div>`);
     }
+    let h = `${D ? '' : `<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div>`}<h2>${esc(q.text)}</h2>`;
     if (q.opts) {
-      h += (q.type === 'fusion' ? '<p class="mut">La fusion réussit seulement si les deux équipes votent pareil. Parlez-vous !</p>' : '') +
+      h += (q.type === 'fusion' ? '<p class="mut">Les deux équipes doivent voter pareil.</p>' : '') +
         `<div class="grid">${q.opts.map((o, i) => `<button class="ans" data-v="${i}" style="--c:${GAME.corners[i].color}"><b>${GAME.corners[i].l}</b><span>${esc(o)}</span></button>`).join('')}</div>`;
     } else if (q.type === 'standsit') {
       h += `<div class="vf"><button class="t" data-v="true">VRAI<small>votre avatar se lève</small></button><button class="f" data-v="false">FAUX<small>votre avatar reste assis</small></button></div>`;
     } else if (q.type === 'line') {
       h += `<div class="slider"><output id="lv">${lineVal}</output><input type="range" id="lr" min="0" max="100" step="1" value="${lineVal}"><div class="scale"><span>0</span><span>50</span><span>100</span></div><button id="lok">Valider ${lineVal}</button></div>`;
     }
-    m.innerHTML = h;
+    done(h, true, `Question ${q.idx + 1} sur ${q.n}`);
     m.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { const v = b.dataset.v; send(v === 'true' ? true : v === 'false' ? false : +v); });
     if ($('lr')) { $('lr').oninput = e => { lineVal = +e.target.value; $('lv').textContent = lineVal; $('lok').textContent = 'Valider ' + lineVal; }; $('lok').onclick = () => send(lineVal); }
   }

@@ -127,3 +127,18 @@ Les personnages (dossier `assets/`) sont des modèles humains de type Mixamo (Ad
 ## 8. Après la présentation
 
 Dans la console Firebase, supprimez le nœud `rooms` ou remettez les règles à `".read": false, ".write": false`. Les règles fournies laissent n'importe qui écrire dans `rooms` : c'est pratique pour un événement de classe, pas pour un usage permanent.
+
+## Tests automatiques
+
+À lancer après chaque modification :
+
+```bash
+npm install          # une seule fois
+npm test             # règles du jeu, points, configuration (2 secondes)
+npm run e2e          # vraie partie : projecteur + 2 téléphones dans Chrome/Edge (1 à 3 minutes)
+npm run check        # les deux
+```
+
+Le test de bout en bout vérifie notamment qu'après un rechargement du projecteur ou une nouvelle partie
+dans la même salle, les téléphones peuvent encore répondre (aucune réponse « fantôme » d'une partie précédente).
+Si Chrome n'est pas trouvé : `CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe" npm run e2e`.

@@ -36,12 +36,13 @@ export function route(f, t) {
 }
 
 export function createClassroom(canvas, opts = {}) {
+  const LITE = !!opts.lite;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  const BASE_PR = Math.min(window.devicePixelRatio || 1, 1.5); let rs = 1;
+  const BASE_PR = Math.min(window.devicePixelRatio || 1, LITE ? 1.35 : 1.5); let rs = 1;
   renderer.setPixelRatio(BASE_PR);
   renderer.shadowMap.autoUpdate = false; let frameN = 0;
   renderer.info.autoReset = false;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = !LITE; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#0c1113');
@@ -72,7 +73,7 @@ export function createClassroom(canvas, opts = {}) {
   const SUNP = new THREE.Vector3(-16, 5.6, 7), SUNT = new THREE.Vector3(0, 0, 0.5);
   const sun = new THREE.DirectionalLight('#ffc27a', 5.2);
   sun.position.copy(SUNP); sun.target.position.copy(SUNT); scene.add(sun, sun.target);
-  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  sun.castShadow = !LITE; sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 11, bottom: -11, near: 2, far: 45 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   const panels = [];
@@ -286,7 +287,7 @@ export function createClassroom(canvas, opts = {}) {
     g.fillStyle = color; g.beginPath(); g.arc(30, 38, 11, 0, 7); g.fill(); g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(text, 52, 40);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, sizeAttenuation: false }));
-    sp.scale.set(w / 76 * .026, .026, 1); sp.position.y = 1.98; sp.renderOrder = 10; return sp;
+    const ls = opts.labelScale || .026; sp.scale.set(w / 76 * ls, ls, 1); sp.position.y = 1.98; sp.renderOrder = 10; return sp;
   }
   const discGeo = new THREE.CircleGeometry(.32, 32);
   function addPerson(id, look, o = {}) {
@@ -364,6 +365,9 @@ export function createClassroom(canvas, opts = {}) {
   let camKey = 'lobby';
   const camPos = new THREE.Vector3(...CAMS.lobby[0]), camLook = new THREE.Vector3(...CAMS.lobby[1]);
   const tp = new THREE.Vector3(), tl = new THREE.Vector3();
+  let fol = { id: null, mode: 'back' };
+  function follow(id, mode = 'back', snap) { fol = { id, mode }; camKey = 'follow'; if (snap) snapNext = true; }
+  let snapNext = false;
   function cam(k, snap) { if (!CAMS[k]) return; camKey = k; if (snap) { camPos.set(...CAMS[k][0]); camLook.set(...CAMS[k][1]); } }
 
   let T = 0;
@@ -375,7 +379,7 @@ export function createClassroom(canvas, opts = {}) {
     const c = renderer.domElement; return { x: (v3.x + 1) / 2 * c.clientWidth, y: (1 - v3.y) / 2 * c.clientHeight };
   }
   let composer = null, gtao = null, grade = null, bloom = null, hq = true;
-  try {
+  if (!LITE) try {
     composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: 4 })); composer.addPass(new RenderPass(scene, camera));
     gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .5, distanceExponent: 1.6, thickness: 1.3, scale: 1.1 }); gtao.blendIntensity = 1.0; composer.addPass(gtao);
     const gtaoSize = gtao.setSize.bind(gtao); gtao.setSize = (w, h) => gtaoSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
@@ -409,16 +413,24 @@ export function createClassroom(canvas, opts = {}) {
   function tick(dt) {
     renderer.info.reset(); T += dt;
     people.forEach(a => animate(a, dt));
-    const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l);
+    if (camKey === 'follow') {
+      const a = people.get(fol.id);
+      if (a) {
+        const sy = a.sit * -.3;
+        if (fol.mode === 'front') { tp.set(a.x + .55, 1.75 + sy, a.z - 2.1); tl.set(a.x, 1.0 + sy, a.z); }
+        else { tp.set(a.x + .75, 2.15 + sy * .5, a.z + 2.35); tl.set(a.x - .25, .85, a.z - 2.6); }
+      }
+    } else { const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l); }
     if (camKey === 'lobby' || camKey === 'wide') { tp.x += Math.sin(T * .12) * .35; tp.z += Math.cos(T * .1) * .2; }
+    if (snapNext) { snapNext = false; camPos.copy(tp); camLook.copy(tl); }
     const k = 1 - Math.exp(-dt * 2.2); camPos.lerp(tp, k); camLook.lerp(tl, k);
     camera.position.copy(camPos); camera.position.x += Math.sin(T * .9) * .012 + Math.sin(T * 2.3) * .004; camera.position.y += Math.sin(T * 1.3) * .01;
     camera.lookAt(camLook);
     if (grade) grade.uniforms.time.value = T;
-    { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
+    if (!LITE) { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
     zoneMeshes.forEach(m => { if (m.userData.hi) { const s = 1 + Math.sin(T * 5) * .05; m.scale.set(s, s, 1); } else m.scale.set(1, 1, 1); });
     flagM.rotation.y = Math.sin(T * 3) * .15;
-    if (++frameN % 2 === 0 || frameN < 4) renderer.shadowMap.needsUpdate = true;
+    if (!LITE && (++frameN % 2 === 0 || frameN < 4)) renderer.shadowMap.needsUpdate = true;
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
     adapt();
   }
@@ -432,6 +444,7 @@ export function createClassroom(canvas, opts = {}) {
     fpsN++; const now = performance.now(); if (now - fpsT0 < 3000) return;
     fps = fpsN * 1000 / (now - fpsT0); fpsN = 0; fpsT0 = now;
     if (!auto || !hq || document.hidden) return;
+    if (LITE) { if (fps < 24 && rs > .6) { rs = Math.max(.6, rs - .15); applyRes(); } return; }
     if (last) { const gain = fps / last.fps; if (gain < 1.12) { setLevel(last.lvl); capped = true; } last = null; return; }
     if (fps < 42 && lvl < levels.length - 1 && !capped) { last = { fps, lvl }; setLevel(lvl + 1); }
     else if (fps > 57 && lvl > 0) { capped = false; setLevel(lvl - 1); }
@@ -451,5 +464,5 @@ export function createClassroom(canvas, opts = {}) {
   }
   const setScale = x => { rs = x; applyRes(); };
   const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
-  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }

@@ -1,6 +1,6 @@
 /* Couche réseau : Firebase Realtime Database si configuré, sinon mode local
    (même navigateur, plusieurs onglets) pour répéter avec des joueurs fictifs. */
-import { FIREBASE } from './config.js?v=13';
+import { FIREBASE } from './config.js?v=14';
 
 export async function connect(room) {
   if (FIREBASE) {
@@ -28,6 +28,7 @@ async function firebase(room) {
     onPlayer: (pid, cb) => on('players/' + pid, cb),
     answer: (key, pid, v) => d.set(R(`answers/${key}/${pid}`), { v, t: d.serverTimestamp() }),
     onAnswers: (key, cb) => on('answers/' + key, v => cb(v || {})),
+    clearAnswers: () => d.remove(R('answers')),
     clearRoom: () => d.remove(d.ref(db, 'rooms/' + room))
   };
 }
@@ -79,6 +80,7 @@ function local(room) {
     onPlayer: (pid, cb) => on('players/' + pid, cb),
     answer: (k, pid, v) => { write(`answers/${k}/${pid}`, { v, t: Date.now() }); return ping(); },
     onAnswers: (k, cb) => on('answers/' + k, v => cb(v || {})),
+    clearAnswers: () => { write('answers', null); return ping(); },
     clearRoom: () => { for (const k of ls.keys()) if (k.startsWith(K)) ls.del(k); return ping(); }
   };
 }

@@ -139,10 +139,11 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=13';
-import { connect } from './net.js?v=13';
-import { keyFor, spoken, NARR } from './voices.js?v=13';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=13';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=14';
+import { connect } from './net.js?v=14';
+import { keyFor, spoken, NARR } from './voices.js?v=14';
+import { newGameId, answerKey, allAnswered, scoreRound } from './logic.js?v=14';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=14';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -155,6 +156,7 @@ const newCode = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ'[
 if (!ROOM) ROOM = newCode();
 try { localStorage.setItem('choc:hostroom', ROOM); } catch (e) { }
 const net = await connect(ROOM);
+net.clearAnswers && net.clearAnswers(); // anciennes réponses d'une partie précédente dans la même salle
 if (net.mode === 'local') $('mode').classList.add('on');
 
 const R = createClassroom($('stage'), { corners: GAME.corners, preload: ['louise', 'joe', 'leonard', 'ben', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
@@ -194,8 +196,9 @@ function goHome(pid, delay = 0) {
 function syncAvatars() {
   for (const [pid, p] of Object.entries(players)) {
     if (avatars.has(pid) || !p || !p.name) continue;
-    const team = p.team ? 1 : 0, seat = freeSeat(team);
+    const team = p.team ? 1 : 0, seat = (Number.isInteger(p.seat) && SEATS[p.seat] && !seatTaken.has(p.seat)) ? p.seat : freeSeat(team);
     if (seat !== null) seatTaken.set(seat, pid);
+    if ((p.seat ?? null) !== seat) net.setPlayer(pid, { seat });
     avatars.set(pid, { seat, team });
     R.addPerson(pid, lookFor(pid, team), { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: p.name, color: GAME.teams[team].color });
     R.moveTo(pid, DOOR.x, DOOR.z, { direct: true });
@@ -217,13 +220,13 @@ function setCam(k) { baseCam = k; if (!saying) R.cam(k); }
 const steps = [{ k: 'lobby' }];
 GAME.acts.forEach((a, ai) => { steps.push({ k: 'intro', ai }); a.qs.forEach((q, qi) => steps.push({ k: 'q', ai, qi })); });
 steps.push({ k: 'final' });
-let S = { step: 0, phase: null, sound: true, t0: null, timer: null, awarded: {} };
+let S = { gid: newGameId(), step: 0, phase: null, sound: true, t0: null, timer: null, awarded: {} };
 const cur = () => steps[S.step], act = () => GAME.acts[cur().ai], qq = () => act().qs[cur().qi];
-const KEY = () => 's' + S.step;
+const KEY = () => answerKey(S.gid, S.step);
 let answers = {}, unsubA = null, botTimers = [];
 
 function publish(extra = {}) {
-  const st = cur(), o = { step: S.step, kind: st.k, phase: S.phase || null, key: KEY(), teams: GAME.teams.map(t => t.name), v: Date.now() };
+  const st = cur(), o = { gid: S.gid, step: S.step, kind: st.k, phase: S.phase || null, key: KEY(), teams: GAME.teams.map(t => t.name), v: Date.now() };
   if (st.ai !== undefined) { const a = act(); o.act = { i: st.ai, n: GAME.acts.length, name: a.name, rule: a.rule, type: a.type }; }
   if (st.k === 'q') { const q = qq(); o.q = { text: q.q, opts: q.opts || null, t: q.t, idx: st.qi, n: act().qs.length, type: act().type }; if (S.phase === 'reveal') o.reveal = { ok: q.ok ?? null, val: q.val ?? null, why: q.why }; }
   net.setState(Object.assign(o, extra));
@@ -313,8 +316,7 @@ function onAnswers(v) {
     if (type === 'standsit') { const s = homeOf(pid); if (a.v === true) R.moveTo(pid, s.x, s.z + .42, { direct: true, face: Math.PI }); }
   }
   render();
-  const n = plist().length, k = Object.keys(answers).length;
-  if (S.phase === 'open' && n > 0 && k >= n) closeQ();
+  if (S.phase === 'open' && allAnswered(answers, players)) closeQ();
 }
 function closeQ() { if (S.phase !== 'open') return; S.phase = 'closed'; clearTimer(); publish(); render(); }
 
@@ -324,27 +326,14 @@ function reveal() {
   clearTimer(); stopBots(); S.phase = 'reveal';
   const a = act(), q = qq(), L = plist(), key = KEY();
   const ans = Object.entries(answers).filter(([pid]) => players[pid]).map(([pid, x]) => ({ pid, v: x.v, t: x.t || 0 })).sort((x, y) => x.t - y.t);
-  const pts = {}, okSet = new Set(); let extra = {};
-  const isOk = x => a.type === 'line' ? Math.abs(+x.v - q.val) <= 10 : a.type === 'standsit' ? x.v === q.ok : x.v === q.ok;
-  ans.forEach(x => { if (isOk(x)) okSet.add(x.pid); });
-  if (a.type === 'line') ans.forEach(x => pts[x.pid] = Math.max(0, Math.round(150 - 3 * Math.abs(+x.v - q.val))));
-  else if (a.type === 'fusion') {
-    const maj = t => { const c = [0, 0, 0, 0]; ans.filter(x => players[x.pid].team ? t : !t).forEach(x => c[x.v]++); const m = Math.max(...c); return m ? c.indexOf(m) : -1; };
-    const m0 = maj(0), m1 = maj(1), success = m0 === q.ok && m1 === q.ok;
-    extra = { m0, m1, success };
-    ans.forEach(x => pts[x.pid] = success ? 150 : (x.v === q.ok ? 50 : 0));
-  } else {
-    const good = ans.filter(x => okSet.has(x.pid));
-    good.forEach((x, i) => pts[x.pid] = 100 + Math.round(50 * (1 - i / Math.max(1, good.length))));
-    if (a.type === 'race') { const firsts = [0, 1].map(t => good.find(x => (players[x.pid].team ? 1 : 0) === t)).filter(Boolean); firsts.forEach(x => pts[x.pid] += 50); extra.firsts = firsts.map(x => x.pid); }
-  }
+  const { pts, okSet, extra } = scoreRound(a.type, q, ans, pid => players[pid] && players[pid].team ? 1 : 0);
   if (!S.awarded[key]) {
     const upd = {};
     L.forEach(p => { const g = pts[p.id] || 0; upd[p.id] = { score: (p.score || 0) + g, last: { key, pts: g, ok: okSet.has(p.id) || (a.type === 'fusion' && extra.success), none: !answers[p.id] } }; });
     S.awarded[key] = true; net.setPlayers(upd);
   }
   S.result = { ans, okSet, pts, extra, n: L.length };
-  publish({ result: { fusion: extra.success ?? null } });
+  publish({ result: { fusion: extra.success ?? null, firsts: extra.firsts || null } });
   // réactions
   if (a.type === 'corners' || a.type === 'fusion') R.setZones(true, q.ok);
   if (a.type === 'line') R.setFlag(q.val);
@@ -558,7 +547,7 @@ function flash(t) { banner(t, '', 1200); }
 let resetArm = 0;
 async function resetGame() {
   if (Date.now() - resetArm > 3000) { resetArm = Date.now(); flash('Nouvelle partie ? Appuyez encore sur N'); return; }
-  await net.clearRoom(); bots = []; S.awarded = {}; S.raceWinSaid = false; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
+  await net.clearRoom(); S.gid = newGameId(); bots = []; S.awarded = {}; S.raceWinSaid = false; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
 }
 $('lobbyCols').addEventListener('click', e => { const b = e.target.closest('[data-kick]'); if (b) net.removePlayer(b.dataset.kick); });
 addEventListener('keydown', e => {
@@ -587,7 +576,7 @@ function frame(now) {
 }
 net.onPlayers(v => { players = v || {}; syncAvatars(); renderHUD(); if (cur().k === 'lobby') renderLobby(); });
 go(0); requestAnimationFrame(t => { last = t; frame(t); });
-window.__host = { addBots, next, go, S, R, players: () => players, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
+window.__host = { addBots, next, go, S, R, cur, steps, players: () => players, answers: () => answers, reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
 </script>
 </body>
 </html>
