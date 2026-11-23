@@ -139,10 +139,10 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=12';
-import { connect } from './net.js?v=12';
-import { keyFor, spoken, NARR } from './voices.js?v=12';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=12';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=13';
+import { connect } from './net.js?v=13';
+import { keyFor, spoken, NARR } from './voices.js?v=13';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=13';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -162,8 +162,8 @@ function fit() { R.resize(innerWidth, innerHeight); }
 fit(); addEventListener('resize', fit);
 
 /* ---------- personnages fixes ---------- */
-R.addPerson('M', { model: 'louise' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2 });
-R.addPerson('P', { model: 'joe' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2 });
+R.addPerson('M', { model: 'louise' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2, fast: true });
+R.addPerson('P', { model: 'joe' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2, fast: true });
 R.addPerson('K', { model: 'leonard' }, { x: 2.3, z: -4.0, yaw: Math.PI / 2 });
 R.addPerson('Mi', { model: 'ben' }, { x: 4.5, z: -4.0, yaw: -Math.PI / 2 });
 R.setVisible('K', false); R.setVisible('Mi', false);

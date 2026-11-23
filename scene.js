@@ -292,7 +292,7 @@ export function createClassroom(canvas, opts = {}) {
   function addPerson(id, look, o = {}) {
     if (people.has(id)) return people.get(id);
     const root = new THREE.Group(), body = new THREE.Group(); root.add(body); scene.add(root);
-    const a = { id, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
+    const a = { slot: people.size & 1, fast: !!o.fast, id, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
     if (o.label) { a.label = labelSprite(o.label, o.color || '#fff'); root.add(a.label); }
     if (o.color) { const d = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: .55, depthWrite: false })); d.rotation.x = -Math.PI / 2; d.position.y = .015; root.add(d); a.disc = d; }
     Promise.all([loadModel(look.model || 'kate'), ready]).then(([g]) => {
@@ -339,7 +339,9 @@ export function createClassroom(canvas, opts = {}) {
     const want = a.walking ? 'walk' : r === 'cheer' && a.sit < .5 ? 'cheer' : r === 'sad' ? 'sad' : 'idle';
     if (want !== a.cur) { const n = a.actions[want], o = a.actions[a.cur]; n.reset().play(); if (o) n.crossFadeFrom(o, .35, false); a.cur = want; }
     a.actions.walk.timeScale = a.spd / 1.3;
-    a.mixer.update(dt);
+    a.acc = (a.acc || 0) + dt;
+    if (!a.fast && !a.walking && ((frameN + a.slot) & 1)) return;
+    a.mixer.update(a.acc); a.acc = 0;
     const B = a.bones;
     if (a.sit > .01) {
       const k = a.sit;
@@ -377,7 +379,7 @@ export function createClassroom(canvas, opts = {}) {
     composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: 4 })); composer.addPass(new RenderPass(scene, camera));
     gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .5, distanceExponent: 1.6, thickness: 1.3, scale: 1.1 }); gtao.blendIntensity = 1.0; composer.addPass(gtao);
     const gtaoSize = gtao.setSize.bind(gtao); gtao.setSize = (w, h) => gtaoSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
-    const gtaoRender = gtao.render.bind(gtao); gtao.render = (...args) => { fxObjects.forEach(o => o.visible = false); gtaoRender(...args); fxObjects.forEach(o => o.visible = true); };
+    const gtaoRender = gtao.render.bind(gtao); gtao.render = (...args) => { fxObjects.forEach(o => o.visible = false); people.forEach(a => a.body.visible = false); gtaoRender(...args); fxObjects.forEach(o => o.visible = true); people.forEach(a => a.body.visible = true); };
     bloom = new UnrealBloomPass(new THREE.Vector2(400, 225), .3, .55, .82); const bloomSize = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bloomSize(Math.max(2, w >> 1), Math.max(2, h >> 1)); composer.addPass(bloom);
     composer.addPass(new OutputPass());
     grade = new ShaderPass({
