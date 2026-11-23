@@ -139,10 +139,10 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=10';
-import { connect } from './net.js?v=10';
-import { keyFor, spoken, NARR } from './voices.js?v=10';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=10';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=11';
+import { connect } from './net.js?v=11';
+import { keyFor, spoken, NARR } from './voices.js?v=11';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=11';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -157,7 +157,7 @@ try { localStorage.setItem('choc:hostroom', ROOM); } catch (e) { }
 const net = await connect(ROOM);
 if (net.mode === 'local') $('mode').classList.add('on');
 
-const R = createClassroom($('stage'), { corners: GAME.corners, preload: ['louise', 'joe', 'leonard', 'ben', 'kate', 'jody', 'megan', 'suzie'] });
+const R = createClassroom($('stage'), { corners: GAME.corners, preload: ['louise', 'joe', 'leonard', 'ben', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
 function fit() { R.resize(innerWidth, innerHeight); }
 fit(); addEventListener('resize', fit);
 
@@ -175,7 +175,7 @@ const seatTaken = new Map();
 const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 const SK = ['#f1c7a5', '#e0ac85', '#c68a62', '#8d5a3b', '#f6d5bd', '#a8704c', '#d9a07a'], HC = ['#2b1d14', '#5a3a22', '#c9a063', '#1c1c1c', '#8a3b1e', '#d9c7a0', '#3d2b20'], PA = ['#2f3a4f', '#3b3b3b', '#5b4a3a', '#28344a', '#4a4f57'];
 const TOPS = [['#3d74d6', '#2f5fb8', '#5b8ee6', '#28509c', '#4a6fa8'], ['#d8453a', '#b9362d', '#e5675c', '#a32f27', '#c75048']];
-const MODELS = ['ben', 'kate', 'jody', 'megan', 'suzie', 'leonard'];
+const MODELS = ['s_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'];
 function lookFor(pid, team) { return { model: MODELS[hash(pid) % MODELS.length] }; }
 function freeSeat(team) {
   const order = SEATS.map((s, i) => i).filter(i => !seatTaken.has(i)).sort((a, b) => team ? SEATS[b].x - SEATS[a].x : SEATS[a].x - SEATS[b].x);

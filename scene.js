@@ -10,6 +10,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const ROWS = [-2.6, -0.6, 1.4, 3.4];
 export const TABLES = [-4.6, 0, 4.6];
@@ -36,7 +37,10 @@ export function route(f, t) {
 
 export function createClassroom(canvas, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  const BASE_PR = Math.min(window.devicePixelRatio || 1, 1.5); let rs = 1;
+  renderer.setPixelRatio(BASE_PR);
+  renderer.shadowMap.autoUpdate = false; let frameN = 0;
+  renderer.info.autoReset = false;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -68,7 +72,7 @@ export function createClassroom(canvas, opts = {}) {
   const SUNP = new THREE.Vector3(-16, 5.6, 7), SUNT = new THREE.Vector3(0, 0, 0.5);
   const sun = new THREE.DirectionalLight('#ffc27a', 5.2);
   sun.position.copy(SUNP); sun.target.position.copy(SUNT); scene.add(sun, sun.target);
-  sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 11, bottom: -11, near: 2, far: 45 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   const panels = [];
@@ -231,9 +235,33 @@ export function createClassroom(canvas, opts = {}) {
   const flagM = add(new THREE.PlaneGeometry(.8, .5), new THREE.MeshStandardMaterial({ map: flagT, side: THREE.DoubleSide }), .42, 2.1, 0, flag); flag.rotation.y = Math.PI; flagM.castShadow = true;
 
   scene.traverse(o => { if (o.isMesh && o.material && o.material.isMeshStandardMaterial && !o.material.emissiveMap) o.material.envMapIntensity = .35; });
+  /* fusion du décor statique : des centaines d'objets deviennent quelques dizaines d'appels de dessin */
+  (function mergeStatic() {
+    const skip = new Set([skyM, lineMesh, ...zoneMeshes, ...fxObjects]);
+    const groups = new Map(), victims = [];
+    const hex = c => c ? c.getHexString() : '';
+    scene.children.forEach(o => {
+      if (!o.isMesh || o.isSkinnedMesh || skip.has(o) || Array.isArray(o.material) || !o.material.isMeshStandardMaterial || !o.geometry.index) return;
+      const m = o.material;
+      const key = [m.type, hex(m.color), m.roughness, m.metalness, m.map && m.map.uuid, hex(m.emissive), m.emissiveIntensity, m.emissiveMap && m.emissiveMap.uuid, m.transparent, m.opacity, m.side, m.clearcoat || 0, o.castShadow].join('|');
+      if (!groups.has(key)) groups.set(key, { mat: m, cast: o.castShadow, geos: [] });
+      o.updateWorldMatrix(true, false);
+      const g = o.geometry.clone().applyMatrix4(o.matrixWorld); g.clearGroups();
+      for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+      if (!g.attributes.uv) return;
+      groups.get(key).geos.push(g); victims.push(o);
+    });
+    victims.forEach(o => scene.remove(o));
+    groups.forEach(({ mat, cast, geos }) => {
+      if (!geos.length) return;
+      const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+      if (!merged) return;
+      const mesh = new THREE.Mesh(merged, mat); mesh.castShadow = cast; mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; scene.add(mesh);
+    });
+  })();
   try { scene.environment = pmrem.fromScene(scene, 0.02, 0.1, 60).texture; } catch (e) { }
   /* ---------- personnages réalistes (modèles glTF animés) ---------- */
-  const people = new Map();
+  const people = new Map(); let compiledOnce = false;
   const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
   const base = opts.assets || './assets/';
   const modelCache = {}, clips = {};
@@ -269,7 +297,8 @@ export function createClassroom(canvas, opts = {}) {
     if (o.color) { const d = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: .55, depthWrite: false })); d.rotation.x = -Math.PI / 2; d.position.y = .015; root.add(d); a.disc = d; }
     Promise.all([loadModel(look.model || 'kate'), ready]).then(([g]) => {
       if (!people.has(id)) return;
-      const m = cloneSkinned(g.scene); m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; n.frustumCulled = false; } });
+      const m = cloneSkinned(g.scene); m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; if (n.geometry) { n.geometry.computeBoundingSphere(); n.geometry.boundingSphere.radius *= 1.4; } } });
+      if (!compiledOnce) { compiledOnce = true; setTimeout(() => { try { renderer.compile(scene, camera); } catch (e) { } }, 0); }
       const B = {}; m.traverse(n => { if (n.isBone) B[n.name] = n; });
       a.bones = B; a.mixer = new THREE.AnimationMixer(m); a.actions = {};
       for (const k in clips) a.actions[k] = a.mixer.clipAction(clips[k]);
@@ -343,36 +372,40 @@ export function createClassroom(canvas, opts = {}) {
     if (v3.z > 1) return null;
     const c = renderer.domElement; return { x: (v3.x + 1) / 2 * c.clientWidth, y: (1 - v3.y) / 2 * c.clientHeight };
   }
-  let composer = null, gtao = null, grade = null, hq = true;
+  let composer = null, gtao = null, grade = null, bloom = null, hq = true;
   try {
     composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: 4 })); composer.addPass(new RenderPass(scene, camera));
     gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .5, distanceExponent: 1.6, thickness: 1.3, scale: 1.1 }); gtao.blendIntensity = 1.0; composer.addPass(gtao);
+    const gtaoSize = gtao.setSize.bind(gtao); gtao.setSize = (w, h) => gtaoSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
     const gtaoRender = gtao.render.bind(gtao); gtao.render = (...args) => { fxObjects.forEach(o => o.visible = false); gtaoRender(...args); fxObjects.forEach(o => o.visible = true); };
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(800, 450), .32, .55, .82));
+    bloom = new UnrealBloomPass(new THREE.Vector2(400, 225), .3, .55, .82); const bloomSize = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bloomSize(Math.max(2, w >> 1), Math.max(2, h >> 1)); composer.addPass(bloom);
     composer.addPass(new OutputPass());
     grade = new ShaderPass({
-      uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(800, 450) } },
+      uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(800, 450) }, sharp: { value: .55 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform vec2 res; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform vec2 res; uniform float sharp; varying vec2 vUv;
         float rand(vec2 c){ return fract(sin(dot(c, vec2(12.9898,78.233))) * 43758.5453); }
         void main(){
-          vec2 d = vUv - .5; float r2 = dot(d, d); vec2 off = d * r2 * .012;
+          vec2 d = vUv - .5; float r2 = dot(d, d); vec2 off = d * r2 * .004; vec2 px = 1. / res;
           vec3 c = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
-          c = clamp(c, 0., 1.);
+          vec3 nb = texture2D(tDiffuse, vUv + vec2(px.x, 0.)).rgb + texture2D(tDiffuse, vUv - vec2(px.x, 0.)).rgb + texture2D(tDiffuse, vUv + vec2(0., px.y)).rgb + texture2D(tDiffuse, vUv - vec2(0., px.y)).rgb;
+          c = clamp(c + (c - nb * .25) * sharp, 0., 1.);
           c = mix(c, c * c * (3. - 2. * c), .38);
           float l = dot(c, vec3(.2126, .7152, .0722));
           c = mix(vec3(l), c, 1.16);
           c += mix(vec3(-.018, .006, .03), vec3(.045, .016, -.03), smoothstep(.15, .85, l));
           c *= mix(1., smoothstep(1.05, .3, length(d) * 1.3), .5);
-          c += (rand(vUv * res + fract(time) * 91.) - .5) * .03;
+          c += (rand(vUv * res + fract(time) * 91.) - .5) * .018;
           gl_FragColor = vec4(clamp(c, 0., 1.), 1.);
         }`
     });
     composer.addPass(grade);
   } catch (e) { console.warn('post-traitement indisponible', e); composer = null; }
-  function resize(w, h) { renderer.setSize(w, h, false); if (composer) composer.setSize(w, h); if (grade) grade.uniforms.res.value.set(w, h); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
+  let VW = 800, VH = 450;
+  function applyRes() { const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } }
+  function resize(w, h) { VW = w; VH = h; applyRes(); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
   function tick(dt) {
-    T += dt;
+    renderer.info.reset(); T += dt;
     people.forEach(a => animate(a, dt));
     const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l);
     if (camKey === 'lobby' || camKey === 'wide') { tp.x += Math.sin(T * .12) * .35; tp.z += Math.cos(T * .1) * .2; }
@@ -383,7 +416,25 @@ export function createClassroom(canvas, opts = {}) {
     { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
     zoneMeshes.forEach(m => { if (m.userData.hi) { const s = 1 + Math.sin(T * 5) * .05; m.scale.set(s, s, 1); } else m.scale.set(1, 1, 1); });
     flagM.rotation.y = Math.sin(T * 3) * .15;
+    if (++frameN % 2 === 0 || frameN < 4) renderer.shadowMap.needsUpdate = true;
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
+    adapt();
+  }
+  /* qualité adaptative : vise 50+ images/s en baissant d'abord la résolution interne, puis les effets */
+  let fpsT0 = performance.now(), fpsN = 0, fps = 60, auto = true;
+  function adapt() {
+    fpsN++; const now = performance.now(); if (now - fpsT0 < 3000) return;
+    fps = fpsN * 1000 / (now - fpsT0); fpsN = 0; fpsT0 = now;
+    if (!auto || !hq) return;
+    if (fps < 45) {
+      if (rs > .65) { rs = Math.max(.6, rs - .15); applyRes(); }
+      else if (gtao && gtao.enabled) gtao.enabled = false;
+      else if (bloom && bloom.enabled) bloom.enabled = false;
+    } else if (fps > 58) {
+      if (bloom && !bloom.enabled) bloom.enabled = true;
+      else if (gtao && !gtao.enabled && rs >= .75) gtao.enabled = true;
+      else if (rs < 1) { rs = Math.min(1, rs + .1); applyRes(); }
+    }
   }
   function setZones(show, hi = -1) { zoneMeshes.forEach((m, i) => { m.visible = show; m.userData.hi = i === hi; m.material.opacity = hi < 0 || i === hi ? 1 : .3; }); }
   function setLine(show) { lineMesh.visible = show; }
@@ -394,9 +445,11 @@ export function createClassroom(canvas, opts = {}) {
   }
   function setQuality(high) {
     hq = high;
-    renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio || 1, 1.75) : 1);
+    rs = high ? 1 : .7; applyRes();
     renderer.shadowMap.enabled = high; sun.castShadow = high;
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
   }
-  return { ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  const setScale = x => { rs = x; applyRes(); };
+  const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
+  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }
