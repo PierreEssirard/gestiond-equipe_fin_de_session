@@ -40,8 +40,8 @@ body.s3d.split main{flex:1 1 auto;max-height:none}
 #big .ok{color:var(--ok)}#big .ko{color:var(--ko)}
 #big .r{font:800 46px/1 "Barlow Condensed",sans-serif}
 #big .p{font:800 30px/1 "Barlow Condensed",sans-serif;color:var(--acc)}
-#tog{position:absolute;right:10px;bottom:10px;min-height:0;padding:6px 10px;font:700 12px Barlow,sans-serif;border-radius:99px;background:rgba(12,17,19,.6);color:var(--mut);display:none}
-body.s3d #tog{display:block}
+#tog{min-height:0;padding:6px 11px;font:800 14px/1 "Barlow Condensed",sans-serif;border-radius:99px;background:rgba(0,0,0,.25);color:#fff;border:1px solid rgba(255,255,255,.35);display:none;flex:none}
+body.joined #tog{display:block}
 main{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px 16px 16px;overflow:auto}
 .card{display:flex;flex-direction:column;gap:6px}
 h1{margin:0;font:800 34px/1.02 "Barlow Condensed",sans-serif;text-wrap:balance}
@@ -75,14 +75,14 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 </style>
 </head>
 <body>
-<header id="hd"><b>Choc des cultures</b><span id="me"></span></header>
-<div id="stage"><canvas id="cv"></canvas><div id="load">Entrée dans la salle…</div><div id="chip"></div><div id="big"><div class="r" id="bigR"></div><div class="p" id="bigP"></div></div><button id="tog">Vue 2D</button></div>
+<header id="hd"><b>Choc des cultures</b><span id="me"></span><button id="tog" aria-label="Changer de vue">2D</button></header>
+<div id="stage"><canvas id="cv"></canvas><div id="load">Entrée dans la salle…</div><div id="chip"></div><div id="big"><div class="r" id="bigR"></div><div class="p" id="bigP"></div></div></div>
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=14';
-import { connect } from './net.js?v=14';
-import { pruneSent, phoneMode } from './logic.js?v=14';
+import { GAME } from './config.js?v=15';
+import { connect } from './net.js?v=15';
+import { pruneSent, phoneMode, zoneSpot, lineSpot, crowdSpot, finalSpots, winner } from './logic.js?v=15';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -112,7 +112,7 @@ async function start() {
   async function boot3d() {
     if (V || booting || !want3d) return; booting = true;
     try {
-      const mod = await import('./scene.js?v=14');
+      const mod = await import('./scene.js?v=15');
       V = makeView(mod);
     } catch (e) { console.warn('3D indisponible', e); want3d = false; }
     booting = false; layout(); if (V) V.sync();
@@ -146,7 +146,6 @@ async function start() {
       }
       for (const id of [...av.keys()]) if (!players[id] || !players[id].name) { av.delete(id); R.removePerson(id); }
     }
-    const jit = (z, r) => { const a = Math.random() * 6.28, d = Math.sqrt(Math.random()) * r; return [z.x + Math.cos(a) * d, z.z + Math.sin(a) * d]; };
     function onAnswers(v) {
       const prev = answers; answers = v || {};
       if (!state || state.kind !== 'q') return;
@@ -154,8 +153,8 @@ async function start() {
       for (const [id, a] of Object.entries(answers)) {
         if (prev[id] && prev[id].v === a.v) continue;
         if (!av.has(id)) continue;
-        if (type === 'corners' || type === 'fusion') { const [x, z] = jit(ZONES[a.v] || ZONES[0], .8); R.moveTo(id, x, z, { face: Math.random() * 6.28 }); }
-        if (type === 'line') R.moveTo(id, lineX(+a.v) + (Math.random() - .5) * .3, LINE_Z - .35 + Math.random() * .7, { face: Math.PI });
+        if (type === 'corners' || type === 'fusion') { const z = zoneSpot(ZONES[a.v] || ZONES[0], id, state.key); R.moveTo(id, z.x, z.z, { face: z.face }); }
+        if (type === 'line') { const l = lineSpot(a.v, id, state.key, lineX, LINE_Z); R.moveTo(id, l.x, l.z, { face: l.face }); }
         if (type === 'standsit') { const s = homeOf(id); if (a.v === true) R.moveTo(id, s.x, s.z + .42, { direct: true, face: Math.PI }); }
       }
     }
@@ -169,13 +168,12 @@ async function start() {
         const t = s.q.type; R.setScreen({ top: `${s.act.name} · question ${s.q.idx + 1}`, main: s.q.text, foot: 'Répondez sur votre téléphone' });
         if (t === 'corners' || t === 'fusion') R.setZones(true);
         if (t === 'line') R.setLine(true);
-        if (t === 'fusion') av.forEach((a, id) => R.moveTo(id, -3.5 + Math.random() * 7, -3.4 - Math.random() * 1.2, { face: 0, delay: Math.random() * 1.5 }));
-        if (t !== 'fusion' && t !== 'line' && t !== 'corners') av.forEach((a, id) => goHome(id));
+        if (t === 'fusion') av.forEach((a, id) => { const c = crowdSpot(id, s.key); R.moveTo(id, c.x, c.z, { face: 0, delay: c.delay }); });
+        if (t === 'standsit') av.forEach((a, id) => goHome(id));
       }
       if (s.kind === 'final') {
-        const sc = [0, 1].map(t => { const L = live().filter(([, p]) => (p.team ? 1 : 0) === t); return L.length ? L.reduce((x, [, p]) => x + (p.score || 0), 0) / L.length : 0; });
-        const w = Math.round(sc[0]) === Math.round(sc[1]) ? -1 : sc[0] > sc[1] ? 0 : 1; let i0 = 0, i1 = 0;
-        av.forEach((a, id) => { const k = a.team ? i1++ : i0++; R.moveTo(id, (a.team ? 1 : -1) * (1 + (k % 6) * .6), -2.9 - Math.floor(k / 6) * .55, { face: 0, delay: Math.random() }); });
+        const { w } = winner(players), fs = finalSpots([...av].map(([id, a]) => ({ pid: id, team: a.team })));
+        av.forEach((a, id) => { const f = fs[id]; R.moveTo(id, f.x, f.z, { face: 0, delay: Math.random() }); });
         setTimeout(() => { if (state && state.kind === 'final') av.forEach((a, id) => R.react(id, w < 0 || a.team === w ? 'cheer' : 'sad', 6)); }, 3200);
         R.setScreen({ top: 'Résultat final', main: w < 0 ? 'Égalité : la fusion est réussie' : GAME.teams[w].name + ' remporte la partie', foot: 'Merci d’avoir joué · équipe Charlie' });
       }
@@ -200,7 +198,7 @@ async function start() {
       syncPeople();
       const s = state; if (!s) return;
       if (s.key !== ansKey) { if (unsubA) unsubA(); answers = {}; ansKey = s.key; unsubA = s.kind === 'q' ? net.onAnswers(s.key, onAnswers) : null; }
-      if (s.step !== lastStep) { lastStep = s.step; lastPhase = null; enterStep(s); }
+      if (s.step !== lastStep) { const first = lastStep === null; lastStep = s.step; lastPhase = null; enterStep(s); if (first) setTimeout(() => R.advance(12), 50); }
       if (s.phase !== lastPhase) { lastPhase = s.phase; enterPhase(s); }
       // caméra
       const t = s.q && s.q.type;
@@ -215,13 +213,23 @@ async function start() {
     new ResizeObserver(fit).observe($('stage')); fit();
     R.cam('wide', true);
     let last = performance.now();
-    const frame = t => { const dt = Math.min(.05, (t - last) / 1000); last = t; if (!document.hidden && document.body.classList.contains('s3d') && !window.__pause) R.tick(dt); requestAnimationFrame(frame); };
+    let gap = 0;
+    const frame = t => {
+      const raw = (t - last) / 1000; last = t;
+      const on = !document.hidden && document.body.classList.contains('s3d') && !window.__pause;
+      if (!on) gap += raw;
+      else { if (gap + raw > .5) R.advance(Math.min(20, gap + raw)); gap = 0; R.tick(Math.min(.05, raw)); }
+      requestAnimationFrame(frame);
+    };
     requestAnimationFrame(frame);
     window.__phone = { R, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return cv.toDataURL('image/jpeg', .85); } };
     return { sync, R };
   }
 
-  $('tog').onclick = () => { want3d = false; try { localStorage.setItem('choc:2d', '1'); } catch (e) { } layout(); render(); };
+  $('tog').onclick = () => {
+    want3d = !want3d; try { localStorage.setItem('choc:2d', want3d ? '0' : '1'); } catch (e) { }
+    render(); if (V && want3d) V.sync();
+  };
 
   net.onPlayer(pid, v => { me = v; render(); });
   net.onPlayers(v => { players = v || {}; renderHead(); if (V) V.sync(); });
@@ -240,6 +248,8 @@ async function start() {
   }
   function layout(split) {
     const on = !!(V && want3d && me && me.name);
+    document.body.classList.toggle('joined', !!(me && me.name));
+    $('tog').textContent = want3d ? '2D' : '3D';
     document.body.classList.toggle('s3d', on);
     document.body.classList.toggle('split', on && !!split);
   }

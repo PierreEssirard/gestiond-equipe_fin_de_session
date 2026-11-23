@@ -410,6 +410,8 @@ export function createClassroom(canvas, opts = {}) {
   let VW = 800, VH = 450;
   function applyRes() { const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } }
   function resize(w, h) { VW = w; VH = h; applyRes(); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
+  /* fait avancer les déplacements sans dessiner (rattrapage après une pause) */
+  function advance(sec) { for (let t = 0; t < sec; t += .1) { T += .1; people.forEach(a => animate(a, .1)); } }
   function tick(dt) {
     renderer.info.reset(); T += dt;
     people.forEach(a => animate(a, dt));
@@ -419,6 +421,10 @@ export function createClassroom(canvas, opts = {}) {
         const sy = a.sit * -.3;
         if (fol.mode === 'front') { tp.set(a.x + .55, 1.75 + sy, a.z - 2.1); tl.set(a.x, 1.0 + sy, a.z); }
         else { tp.set(a.x + .75, 2.15 + sy * .5, a.z + 2.35); tl.set(a.x - .25, .85, a.z - 2.6); }
+        /* la caméra reste dans la salle (sinon on voit l'extérieur des murs) ;
+           si elle bute contre un mur, elle monte et regarde l'avatar */
+        const cx = Math.max(-7.3, Math.min(7.3, tp.x)), cz = Math.max(-5.9, Math.min(6.0, tp.z));
+        if (cx !== tp.x || cz !== tp.z) { tp.set(cx, 2.7, cz); tl.set(a.x, .8 + sy, a.z); }
       }
     } else { const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l); }
     if (camKey === 'lobby' || camKey === 'wide') { tp.x += Math.sin(T * .12) * .35; tp.z += Math.cos(T * .1) * .2; }
@@ -464,5 +470,5 @@ export function createClassroom(canvas, opts = {}) {
   }
   const setScale = x => { rs = x; applyRes(); };
   const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
-  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }

@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { keyFor } from '../voices.js';
+import { LINES } from '../config.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NM = path.join(ROOT, 'node_modules');
@@ -92,6 +94,29 @@ try {
   });
   await B.click('[data-v="0"]');
   await check('tout le monde a répondu : la question se ferme', () => wait(host, () => __host.S.phase === 'closed'));
+  await check('le téléphone et le projecteur placent les personnages au même endroit', async () => {
+    await A.waitForTimeout(800);
+    await host.evaluate(() => __host.R.advance(15)); await A.evaluate(() => __phone.R.advance(15));
+    const pos = p => p.evaluate(R => ['pA', 'pB'].map(id => { const a = (R === 'h' ? __host.R : __phone.R).people.get(id); return a ? [a.x, a.z] : null; }), p === host ? 'h' : 'p');
+    const [h, a] = [await pos(host), await pos(A)];
+    for (let i = 0; i < 2; i++) { if (!h[i] || !a[i]) throw new Error('avatar manquant'); const d = Math.hypot(h[i][0] - a[i][0], h[i][1] - a[i][1]); if (d > .05) throw new Error(`écart de ${d.toFixed(2)} m`); }
+  });
+  await check('la caméra du téléphone reste dans la salle (pas d’écran jaune)', async () => {
+    const out = await B.evaluate(() => {
+      const R = __phone.R, a = R.people.get('pB'), bad = [];
+      for (const [x, z] of [[6.5, 5.3], [-6.5, 5.3], [6.5, -4.7], [0, 6.2], [-7.5, 0]]) {
+        a.x = x; a.z = z; a.path = []; R.follow('pB', 'back', true); R.tick(.05);
+        R.follow('pB', 'front', true); R.tick(.05);
+        const c = R.camera.position; if (Math.abs(c.x) > 7.6 || c.z > 6.3 || c.z < -6.2) bad.push(`${x},${z} -> ${c.x.toFixed(1)},${c.z.toFixed(1)}`);
+      }
+      return bad;
+    });
+    if (out.length) throw new Error('caméra hors de la salle : ' + out.join(' ; '));
+  });
+  await check('bouton 2D puis 3D : on revient bien à la 3D', async () => {
+    await A.click('#tog'); await wait(A, () => !document.body.classList.contains('s3d') && document.getElementById('tog').textContent === '3D');
+    await A.click('#tog'); await wait(A, () => document.body.classList.contains('s3d') && document.getElementById('tog').textContent === '2D');
+  });
   await host.evaluate(() => __host.next());
   await check('révélation : points affichés sur les téléphones', async () => { await wait(A, () => /\+\d+ pts/.test(document.getElementById('big').innerText)); await wait(B, () => /Raté/.test(document.getElementById('big').innerText)); });
 
@@ -107,6 +132,28 @@ try {
   });
   await A.click('[data-v="2"]');
   await check('après rechargement : la réponse de A est bien reçue', () => wait(host, () => Object.keys(__host.answers()).length === 1 && __host.S.phase === 'open'));
+
+  // ---- voix : rien de l'étape précédente ne doit parler après « Suivant » ----
+  await host.evaluate(() => {
+    window.__spoken = [];
+    const log = x => __spoken.push({ x, t: performance.now() });
+    const play = HTMLMediaElement.prototype.play; HTMLMediaElement.prototype.play = function () { log(this.src); return play.call(this); };
+    if (window.speechSynthesis) { const sp = speechSynthesis.speak.bind(speechSynthesis); speechSynthesis.speak = u => { log(u.text); return sp(u); }; }
+    __host.S.sound = true;
+  });
+  await B.click('[data-v="1"]'); await wait(host, () => __host.S.phase === 'closed');
+  await host.evaluate(() => __host.next());             // révélation : les profs vont commenter dans 1,4 s
+  await host.waitForTimeout(300);
+  const mark = await host.evaluate(() => { __host.next(); return performance.now(); }); // Suivant tout de suite
+  await host.waitForTimeout(5000);
+  await check('après « Suivant », les profs ne commentent plus la question précédente (pas de voix en double)', async () => {
+    const profLines = ['great', 'mid', 'bad', 'none'].flatMap(k => LINES[k].flat()).filter(l => Array.isArray(l));
+    const keys = new Set(profLines.map(([w, t]) => keyFor(w, t))), texts = new Set(profLines.map(([, t]) => t));
+    const late = (await host.evaluate(m => __spoken.filter(e => e.t > m).map(e => e.x), mark))
+      .filter(x => [...keys].some(k => x.includes(k)) || [...texts].some(t => x.includes(t.slice(0, 25))));
+    if (late.length) throw new Error('voix en trop : ' + late.slice(0, 2).join(' | ').slice(0, 160));
+  });
+  await host.evaluate(() => { __host.S.sound = false; });
 
   // ---- nouvelle partie avec la touche N (deux fois) ----
   await host.evaluate(() => __host.reset());

@@ -1,6 +1,6 @@
 /* Couche réseau : Firebase Realtime Database si configuré, sinon mode local
    (même navigateur, plusieurs onglets) pour répéter avec des joueurs fictifs. */
-import { FIREBASE } from './config.js?v=14';
+import { FIREBASE } from './config.js?v=15';
 
 export async function connect(room) {
   if (FIREBASE) {

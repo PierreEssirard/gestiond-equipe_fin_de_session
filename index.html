@@ -139,11 +139,11 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=14';
-import { connect } from './net.js?v=14';
-import { keyFor, spoken, NARR } from './voices.js?v=14';
-import { newGameId, answerKey, allAnswered, scoreRound } from './logic.js?v=14';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=14';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=15';
+import { connect } from './net.js?v=15';
+import { keyFor, spoken, NARR } from './voices.js?v=15';
+import { newGameId, answerKey, allAnswered, scoreRound, zoneSpot, lineSpot, crowdSpot, finalSpots } from './logic.js?v=15';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=15';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -233,7 +233,9 @@ function publish(extra = {}) {
 }
 
 let sayTok = 0;
-function hush() { sayQ = []; sayTok++; saying = false; $('cap').classList.remove('on'); try { speechSynthesis.cancel(); } catch (e) { } if (curAudio) { try { curAudio.pause(); } catch (e) { } curAudio = null; } }
+/* minuterie annulée dès qu'on appuie sur Suivant (évite les voix en double) */
+const later = (ms, fn) => { const t = sayTok; setTimeout(() => { if (t === sayTok) fn(); }, ms); };
+function hush() { sayQ = []; sayTok++; saying = false; $('cap').classList.remove('on'); try { speechSynthesis.cancel(); } catch (e) { } if (curAudio) { try { curAudio.pause(); curAudio.src = ''; } catch (e) { } curAudio = null; } ['M', 'P', 'K', 'Mi'].forEach(id => R.talk(id, 0)); bubbles.forEach(el => el._until = 0); }
 function go(i) {
   S.step = Math.max(0, Math.min(steps.length - 1, i)); S.phase = null; clearTimer(); stopBots(); hush();
   if (unsubA) { unsubA(); unsubA = null; } answers = {};
@@ -247,14 +249,14 @@ function enter() {
   R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
   R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
   banner('');
-  if (st.k === 'lobby') { setCam('lobby'); avatars.forEach((a, pid) => goHome(pid)); R.setScreen({ top: GAME.title, main: 'Scannez le code QR pour rejoindre la partie', foot: 'Code : ' + ROOM }); setTimeout(() => { if (cur().k === 'lobby') { narrate(NARR.welcome); say(LINES.lobby); } }, 1200); }
+  if (st.k === 'lobby') { setCam('lobby'); avatars.forEach((a, pid) => goHome(pid)); R.setScreen({ top: GAME.title, main: 'Scannez le code QR pour rejoindre la partie', foot: 'Code : ' + ROOM }); later(1200, () => { if (cur().k === 'lobby') { narrate(NARR.welcome); say(LINES.lobby); } }); }
   if (st.k === 'intro') {
     const a = act(); setCam('wide'); avatars.forEach((x, pid) => goHome(pid, Math.random() * .8));
     banner(a.name, `Activité ${st.ai + 1} sur ${GAME.acts.length} · ${a.bloc}`, 2600);
     R.setScreen({ top: `Activité ${st.ai + 1} · ${a.name}`, main: a.rule, foot: 'Rejoindre : code ' + ROOM });
     if (a.type === 'corners' || a.type === 'fusion') R.setZones(true);
     if (a.type === 'line') R.setLine(true);
-    const l = LINES.intro[a.type]; setTimeout(() => { if (cur() !== st) return; narrate(NARR.intro(st.ai, a)); if (l) say(l); }, 1200);
+    const l = LINES.intro[a.type]; later(1200, () => { if (cur() !== st) return; narrate(NARR.intro(st.ai, a)); if (l) say(l); });
   }
   if (st.k === 'q') {
     const a = act(), q = qq();
@@ -262,19 +264,19 @@ function enter() {
     unsubA = net.onAnswers(KEY(), onAnswers);
     if (a.type === 'corners') { R.setZones(true); setCam('wide'); }
     if (a.type === 'line') { R.setLine(true); setCam('line'); }
-    if (a.type === 'standsit') setCam('wide');
-    if (a.type === 'fusion') { R.setZones(true); setCam('wide'); avatars.forEach((x, pid) => R.moveTo(pid, -3.5 + Math.random() * 7, -3.4 - Math.random() * 1.2, { face: 0, delay: Math.random() * 1.5 })); }
+    if (a.type === 'standsit') { setCam('wide'); avatars.forEach((x, pid) => goHome(pid)); }
+    if (a.type === 'fusion') { R.setZones(true); setCam('wide'); avatars.forEach((x, pid) => { const c = crowdSpot(pid, KEY()); R.moveTo(pid, c.x, c.z, { face: 0, delay: c.delay }); }); }
     if (a.type === 'race') { playScene(q.scene); return; }
     openQ();
   }
   if (st.k === 'final') {
     setCam('final'); const ts = teamStats(), w = ts[0].avg === ts[1].avg ? -1 : ts[0].avg > ts[1].avg ? 0 : 1;
-    let i0 = 0, i1 = 0;
-    avatars.forEach((a, pid) => { const k = a.team ? i1++ : i0++; R.moveTo(pid, (a.team ? 1 : -1) * (1 + (k % 6) * .6), -2.9 - Math.floor(k / 6) * .55 + .0, { face: 0, delay: Math.random() }); });
+    const fs = finalSpots([...avatars].map(([pid, a]) => ({ pid, team: a.team })));
+    avatars.forEach((a, pid) => { const f = fs[pid]; R.moveTo(pid, f.x, f.z, { face: 0, delay: Math.random() }); });
     setTimeout(() => { if (cur().k !== 'final') return; avatars.forEach((a, pid) => R.react(pid, w < 0 || a.team === w ? 'cheer' : 'sad', 6)); }, 3200);
     banner(w < 0 ? 'Égalité parfaite' : GAME.teams[w].name + ' gagne', `${ts[0].avg} – ${ts[1].avg} points en moyenne par joueur`);
     R.setScreen({ top: 'Résultat final', main: w < 0 ? 'Égalité : la fusion est réussie' : GAME.teams[w].name + ' remporte la partie', foot: 'Merci d’avoir joué · équipe Charlie' });
-    setTimeout(() => { if (cur().k !== 'final') return; narrate(NARR.final(w, GAME.teams)); say(LINES.final); }, 3200);
+    later(3200, () => { if (cur().k !== 'final') return; narrate(NARR.final(w, GAME.teams)); say(LINES.final); });
   }
 }
 function openQ() {
@@ -311,8 +313,8 @@ function onAnswers(v) {
   for (const [pid, a] of Object.entries(answers)) {
     if (prev[pid] && prev[pid].v === a.v) continue;
     if (!avatars.has(pid)) continue;
-    if (type === 'corners' || type === 'fusion') { const [x, z] = jit(ZONES[a.v] || ZONES[0], .8); R.moveTo(pid, x, z, { face: Math.random() * 6.28 }); }
-    if (type === 'line') { R.moveTo(pid, lineX(+a.v) + (Math.random() - .5) * .3, LINE_Z - .35 + Math.random() * .7, { face: Math.PI }); }
+    if (type === 'corners' || type === 'fusion') { const z = zoneSpot(ZONES[a.v] || ZONES[0], pid, KEY()); R.moveTo(pid, z.x, z.z, { face: z.face }); }
+    if (type === 'line') { const l = lineSpot(a.v, pid, KEY(), lineX, LINE_Z); R.moveTo(pid, l.x, l.z, { face: l.face }); }
     if (type === 'standsit') { const s = homeOf(pid); if (a.v === true) R.moveTo(pid, s.x, s.z + .42, { direct: true, face: Math.PI }); }
   }
   render();
@@ -341,16 +343,17 @@ function reveal() {
   if (a.type === 'race' && extra.firsts) extra.firsts.forEach((pid, i) => setTimeout(() => R.moveTo(pid, i ? 1.2 : -.4, -4.6, { face: 0 }), 600));
   // remarques des profs
   const pct = L.length ? okSet.size / L.length : 0;
-  setTimeout(() => {
-    if (cur().k !== 'q') return;
-    if (a.type === 'fusion') { setTimeout(() => { if (cur().k === 'q') say(extra.success ? LINES.fusionOk : LINES.fusionKo); }, 3400); narrate(NARR.fusion(extra.success)); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
+  const revStep = S.step;
+  later(1400, () => {
+    if (S.step !== revStep || S.phase !== 'reveal') return;
+    if (a.type === 'fusion') { later(3400, () => { if (S.step === revStep) say(extra.success ? LINES.fusionOk : LINES.fusionKo); }); narrate(NARR.fusion(extra.success)); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
     narrate(NARR.reveal(a, q, GAME.corners));
     if (!ans.length) { say(pick(LINES.none)); return; }
     const cat = pct >= .75 ? 'great' : pct >= .4 ? 'mid' : 'bad';
     const seq = [...pickLine(cat)];
     if (a.type === 'race' && extra.firsts && extra.firsts.length && !S.raceWinSaid) { S.raceWinSaid = true; seq.push(...LINES.raceWin); }
     say(seq);
-  }, 1400);
+  });
   render();
 }
 let lastLine = {};
@@ -424,16 +427,20 @@ const voixReady = Promise.all([
   DBURL ? fetch(DBURL + '/voix.json?shallow=true').then(r => r.json()).then(o => { VOIX_DB = new Set(Object.keys(o || {})); (async () => { for (const k of VOIX_DB) await dbClip(k); })(); }).catch(() => { }) : null
 ]);
 async function speakP(text, who) {
+  const tok = sayTok;
   await Promise.race([voixReady, new Promise(r => setTimeout(r, 3000))]);
+  if (tok !== sayTok) return;
   const key = keyFor(who, text);
   let src = null;
   if (S.sound && VOIX.has(key)) src = 'voix/' + key + '.mp3';
   else if (S.sound && VOIX_DB.has(key)) src = await dbClip(key);
+  if (tok !== sayTok) return;
   if (src) return new Promise(res => {
     let done = false; const fin = () => { if (!done) { done = true; curAudio = null; res(); } };
     const au = new Audio(src); curAudio = au; au.volume = 1;
-    au.onended = fin; au.onerror = () => { VOIX.delete(key); VOIX_DB.delete(key); speakTTS(text, who).then(fin); };
-    au.play().catch(() => speakTTS(text, who).then(fin));
+    const fallback = () => { if (tok !== sayTok) return fin(); speakTTS(text, who).then(fin); };
+    au.onended = fin; au.onerror = () => { VOIX.delete(key); VOIX_DB.delete(key); fallback(); };
+    au.play().catch(fallback);
     setTimeout(fin, Math.max(20, text.length * .15) * 1000);
   });
   return speakTTS(text, who);

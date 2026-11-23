@@ -1,7 +1,7 @@
 // Tests rapides des règles du jeu (aucun navigateur) : node --test tests/
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newGameId, answerKey, countAnswered, allAnswered, pruneSent, phoneMode, scoreRound } from '../logic.js';
+import { newGameId, answerKey, countAnswered, allAnswered, pruneSent, phoneMode, scoreRound, zoneSpot, lineSpot, crowdSpot, finalSpots, winner } from '../logic.js';
 import { GAME, LINES, PROFS } from '../config.js';
 
 const P = { a: { name: 'Ana', team: 0 }, b: { name: 'Ben', team: 1 }, ghost: { score: 3 } };
@@ -100,4 +100,20 @@ test('répliques : profs connus et « Tabarnak » rare', () => {
   for (const m of all.matchAll(/\["(\w+)",/g)) assert.ok(PROFS[m[1]] || ['N', 'k', 'mi'].includes(m[1]), 'locuteur inconnu ' + m[1]);
   assert.ok((all.match(/tabarnak/gi) || []).length <= 3, 'trop de Tabarnak');
   assert.ok((all.match(/vilains/gi) || []).length <= 3, 'trop de « vilains étudiants »');
+});
+
+test('placements identiques sur tous les écrans (déterministes)', () => {
+  const Z = { x: 6.5, z: 5.3 };
+  assert.deepEqual(zoneSpot(Z, 'pA', 'g_s3'), zoneSpot(Z, 'pA', 'g_s3'));
+  assert.notDeepEqual(zoneSpot(Z, 'pA', 'g_s3'), zoneSpot(Z, 'pB', 'g_s3'));
+  const z = zoneSpot(Z, 'pA', 'g_s3'); assert.ok(Math.hypot(z.x - Z.x, z.z - Z.z) <= .8 + 1e-9);
+  assert.deepEqual(lineSpot(40, 'pA', 'k', v => 5 - v / 10, 5.55), lineSpot(40, 'pA', 'k', v => 5 - v / 10, 5.55));
+  assert.deepEqual(crowdSpot('pA', 'k'), crowdSpot('pA', 'k'));
+  const L = [{ pid: 'b', team: 1 }, { pid: 'a', team: 0 }, { pid: 'c', team: 0 }];
+  assert.deepEqual(finalSpots(L), finalSpots([...L].reverse())); // l'ordre d'arrivée ne change rien
+  assert.ok(finalSpots(L).a.x < 0 && finalSpots(L).b.x > 0);
+});
+test('gagnant final', () => {
+  assert.equal(winner({ a: { name: 'a', team: 0, score: 300 }, b: { name: 'b', team: 1, score: 100 } }).w, 0);
+  assert.equal(winner({ a: { name: 'a', team: 0, score: 100 }, b: { name: 'b', team: 1, score: 100 } }).w, -1);
 });

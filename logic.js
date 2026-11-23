@@ -65,3 +65,36 @@ export function scoreRound(type, q, ans, teamOf) {
   }
   return { pts, okSet, extra };
 }
+
+/* ---------- placements identiques sur le projecteur et les téléphones ----------
+   Au lieu de positions au hasard, chaque position dépend du joueur et de la question :
+   tout le monde voit la même scène. */
+export const hash = s => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+export const rand = seed => (hash(seed) % 100000) / 100000;
+/* point dans un disque autour d'une zone (coins) */
+export function zoneSpot(zone, pid, key, r = .8) {
+  const a = rand(pid + key + 'a') * Math.PI * 2, d = Math.sqrt(rand(pid + key + 'd')) * r;
+  return { x: zone.x + Math.cos(a) * d, z: zone.z + Math.sin(a) * d, face: rand(pid + key + 'f') * Math.PI * 2 };
+}
+/* place sur la ligne 0-100 */
+export function lineSpot(v, pid, key, lineX, LINE_Z) {
+  return { x: lineX(+v) + (rand(pid + key + 'x') - .5) * .3, z: LINE_Z - .35 + rand(pid + key + 'z') * .7, face: Math.PI };
+}
+/* attroupement devant le tableau (fusion) */
+export function crowdSpot(pid, key) {
+  return { x: -3.5 + rand(pid + key + 'cx') * 7, z: -3.4 - rand(pid + key + 'cz') * 1.2, face: 0, delay: rand(pid + key + 'cd') * 1.5 };
+}
+/* alignement final : chaque équipe de son côté, ordre stable (par identifiant) */
+export function finalSpots(list) {
+  const out = {}, k = [0, 0];
+  [...list].sort((a, b) => a.pid < b.pid ? -1 : a.pid > b.pid ? 1 : 0).forEach(({ pid, team }) => {
+    const t = team ? 1 : 0, i = k[t]++;
+    out[pid] = { x: (t ? 1 : -1) * (1 + (i % 6) * .6), z: -2.9 - Math.floor(i / 6) * .55, face: 0 };
+  });
+  return out;
+}
+/* gagnant final d'après la moyenne de points par joueur (-1 = égalité) */
+export function winner(players) {
+  const s = [0, 1].map(t => { const L = Object.values(players || {}).filter(p => isLive(p) && (p.team ? 1 : 0) === t); return L.length ? Math.round(L.reduce((x, p) => x + (p.score || 0), 0) / L.length) : 0; });
+  return { avg: s, w: s[0] === s[1] ? -1 : s[0] > s[1] ? 0 : 1 };
+}
