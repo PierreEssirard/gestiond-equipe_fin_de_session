@@ -139,10 +139,10 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=9';
-import { connect } from './net.js?v=9';
-import { keyFor, spoken, NARR } from './voices.js?v=9';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=9';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=10';
+import { connect } from './net.js?v=10';
+import { keyFor, spoken, NARR } from './voices.js?v=10';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=10';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -359,7 +359,7 @@ function reveal() {
     if (!ans.length) { say(pick(LINES.none)); return; }
     const cat = pct >= .75 ? 'great' : pct >= .4 ? 'mid' : 'bad';
     const seq = [...pickLine(cat)];
-    if (a.type === 'race' && extra.firsts && extra.firsts.length) seq.push(...LINES.raceWin);
+    if (a.type === 'race' && extra.firsts && extra.firsts.length && !S.raceWinSaid) { S.raceWinSaid = true; seq.push(...LINES.raceWin); }
     say(seq);
   }, 1400);
   render();
@@ -558,7 +558,7 @@ function flash(t) { banner(t, '', 1200); }
 let resetArm = 0;
 async function resetGame() {
   if (Date.now() - resetArm > 3000) { resetArm = Date.now(); flash('Nouvelle partie ? Appuyez encore sur N'); return; }
-  await net.clearRoom(); bots = []; S.awarded = {}; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
+  await net.clearRoom(); bots = []; S.awarded = {}; S.raceWinSaid = false; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
 }
 $('lobbyCols').addEventListener('click', e => { const b = e.target.closest('[data-kick]'); if (b) net.removePlayer(b.dataset.kick); });
 addEventListener('keydown', e => {

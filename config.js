@@ -116,49 +116,48 @@ export const PROFS = {
   P: { name: 'Philippe Joly', role: 'Professeur invité', voice: 'm' }
 };
 
-/* Répliques. M = Mélanie Cloutier (sérieuse, rit aux blagues de Philippe), P = Philippe Joly (le drôle).
+/* Répliques. M = Mélanie Cloutier (sérieuse, rit volontiers), P = Philippe Joly (pince-sans-rire).
    Chaque entrée est un petit échange : une liste de [qui, texte] joués à la suite.
+   Ses deux expressions fétiches sont placées à des moments fixes (accueil, fusion, course, fin)
+   pour ne revenir qu'une ou deux fois par partie.
    great : ≥ 75 % de bonnes réponses · mid : 40 à 75 % · bad : < 40 % · none : personne n'a répondu */
 export const LINES = {
   lobby: [
-    ['M', 'Scannez le code. Exceptionnellement, les cellulaires sont permis dans mon cours.'],
-    ['P', 'Profitez-en, ça arrivera plus jamais. Pis pas de TikTok, tabarnak.'],
-    ['M', 'Ha ! Philippe… Bon, il a raison pour TikTok.']
+    ['M', 'Bonjour à tous. Sortez vos téléphones et scannez le code : pour une fois, c’est permis.'],
+    ['P', 'Profitez-en. Sont vilains étudiants, mais aujourd’hui, on vous fait confiance.'],
+    ['M', 'Ha ! Il plaisante. Enfin, je crois.']
   ],
   intro: {
-    corners: [['P', 'Les quatre coins. Choisissez bien votre coin, sont vilains étudiants.'], ['M', 'Et rappelez-vous : la majorité n’a pas toujours raison.']],
-    line: [['M', 'Une estimation, ça se justifie. Pensez à ce qu’on a vu avec Hofstede.'], ['P', 'Moi, j’estime que vous allez vous tromper. Prouvez-moi le contraire.']],
-    standsit: [['P', 'Vrai ou faux. Debout ou assis. Même un vilain étudiant est capable.'], ['M', 'Ha ! On va voir qui reste assis par conviction, et qui par paresse.']],
-    race: [['M', 'Observez bien la scène. Un conflit mal nommé est un conflit qui revient.'], ['P', 'Pis courez vite. C’est la seule fois où je vous permets de courir en classe.']],
-    fusion: [['P', 'Dernière épreuve. Stuttgart et Detroit doivent s’entendre. Bonne chance, tabarnak.'], ['M', 'Parlez-vous. C’est tout le sujet de la présentation.']]
+    corners: [['P', 'Premier jeu : les quatre coins. Ne suivez pas forcément votre voisin.'], ['M', 'Exactement. Réfléchissez avant de choisir.']],
+    line: [['M', 'Une estimation, ça se justifie. Pensez aux scores d’Hofstede vus en classe.'], ['P', 'Et si vous n’avez aucune idée, visez le milieu. Ça marche rarement, mais bon.']],
+    standsit: [['P', 'Vrai ou faux. Simple, rapide, sans appel.'], ['M', 'Lisez bien la phrase : un seul mot peut tout changer.']],
+    race: [['M', 'Observez bien la scène. Un conflit mal nommé est un conflit qui revient.'], ['P', 'Et soyez rapides : ici, la vitesse compte aussi.']],
+    fusion: [['P', 'Dernière épreuve. Stuttgart et Detroit doivent s’entendre sur une seule réponse.'], ['M', 'Parlez-vous. C’est tout le sujet de la présentation.']]
   },
   great: [
-    [['P', 'Tabarnak ! Ils ont presque tous bon. Qui a laissé traîner le corrigé ?'], ['M', 'Personne, Philippe. Ils ont lu Meier. Bravo à tous.']],
-    [['P', 'Sont vilains étudiants… mais là, je suis obligé d’admettre que c’est bon.'], ['M', 'Ha ! Venant de lui, c’est le plus beau compliment de la session.']],
-    [['M', 'Excellent. Une équipe qui partage le même cadre de référence, c’est exactement ce qu’on cherche.'], ['P', 'Moi, mon cadre de référence, c’est la pause café. Mais bravo.']],
-    [['P', 'C’est trop beau. Je soupçonne une fusion secrète entre Stuttgart et Detroit.'], ['M', 'Ha ha ! Ce serait bien la première fusion réussie de l’histoire de l’automobile.']],
-    [['M', 'Très bien. Vous êtes passés de la formation à la performance, comme chez Tuckman.'], ['P', 'Tuckman aurait pleuré. Moi aussi, un peu. Tabarnak.']]
+    [['P', 'Impressionnant. Je soupçonne que quelqu’un a vraiment lu le livre.'], ['M', 'Ha ! Plusieurs, même. Bravo à tous.']],
+    [['M', 'Excellent. Une équipe qui partage le même cadre de référence, c’est exactement ce qu’on cherche.'], ['P', 'Je n’ai rien à ajouter. Pour une fois.']],
+    [['P', 'C’est presque trop beau. Je soupçonne une fusion secrète entre Stuttgart et Detroit.'], ['M', 'Ha ha ! Ce serait la première fusion réussie de l’histoire de l’automobile.']],
+    [['M', 'Très bien. Vous êtes passés de la formation à la performance, comme chez Tuckman.'], ['P', 'Tuckman serait fier. Moi aussi, un peu.']]
   ],
   mid: [
-    [['M', 'La moitié de la classe a compris. L’autre moitié, on en reparle en révision.'], ['P', 'L’autre moitié, c’est celle qui regardait TikTok sous la table. Je vous ai vus.']],
-    [['P', 'Moitié-moitié. On dirait une fusion entre égaux : ça a l’air beau, mais ça marche pas.'], ['M', 'Ha ! C’est cruel, Philippe, mais c’est exactement le cas Daimler-Chrysler.']],
-    [['M', 'Petite question pour vous : avez-vous osé dire les vraies choses à votre équipe ?'], ['P', 'Moi, je les dis, les vraies choses : sont vilains étudiants.'], ['M', 'Ha ha ! Merci pour cette franchise, Philippe.']],
-    [['P', 'Tabarnak, on dirait une réunion sans ordre du jour : tout le monde parle, personne décide.'], ['M', 'Ha ! Il n’a pas tort. Pensez à votre animateur de réunion.']],
-    [['M', 'Un groupe divisé, c’est la phase de tempête. C’est normal, ça se travaille.'], ['P', 'Une tempête ? Moi, j’appelle ça un lundi matin.']]
+    [['M', 'La moitié de la classe a compris. L’autre moitié, on en reparle en révision.'], ['P', 'L’autre moitié regardait son téléphone pour autre chose que le jeu, à mon avis.']],
+    [['P', 'Moitié-moitié. On dirait une fusion entre égaux : ça a l’air bien sur papier.'], ['M', 'Ha ! C’est exactement le cas Daimler-Chrysler.']],
+    [['M', 'Petite question pour vous : avez-vous osé dire les vraies choses à votre équipe ?'], ['P', 'Moi, je les dis toujours. C’est d’ailleurs ce qu’on me reproche.'], ['M', 'Ha ha ! C’est vrai.']],
+    [['P', 'On dirait une réunion sans ordre du jour : tout le monde parle, personne ne décide.'], ['M', 'Ha ! Pensez à votre animateur de réunion.']]
   ],
   bad: [
-    [['P', 'Tabarnak ! Sont vilains étudiants !'], ['M', 'Ha ! Philippe… Bon. Il a un peu raison : on relit le chapitre.']],
-    [['P', 'Ben voyons donc. Je vous l’avais dit, Mélanie : sont vilains étudiants.'], ['M', 'Ils vont se rattraper. N’est-ce pas ?']],
-    [['M', 'Ce n’est pas un échec, c’est un apprentissage. Au moins, la sécurité psychologique est là.'], ['P', 'La sécurité psychologique, oui. La note, par contre…'], ['M', 'Ha ha ! Philippe, voyons.']],
-    [['P', 'Tabarnak, même Daimler-Chrysler a fait mieux. Pis eux autres ont perdu vingt-neuf milliards.'], ['M', 'Ha ha ! Ne le prenez pas mal, il dit ça avec affection.']],
-    [['M', 'Hum. Je pense qu’on va relire ce chapitre ensemble.'], ['P', 'Ensemble, oui. Moi, je lis. Eux autres, ils dorment.']]
+    [['P', 'Bon. On ne va pas se mentir, ce n’était pas votre meilleure.'], ['M', 'Ce n’est pas un échec, c’est un apprentissage. On relira ce chapitre ensemble.']],
+    [['M', 'Celle-là était difficile, je vous l’accorde.'], ['P', 'Difficile, oui. Impossible, non.']],
+    [['P', 'Même Daimler-Chrysler a fait mieux. Et ils ont perdu vingt-neuf milliards.'], ['M', 'Ha ha ! Ne le prenez pas mal, il dit ça avec affection.']],
+    [['M', 'Au moins, la sécurité psychologique est là : personne n’a eu peur de se tromper.'], ['P', 'Ça, je confirme. Personne n’a eu peur.']]
   ],
   none: [
-    [['P', 'Allô ? Y a quelqu’un ? Tabarnak, réveillez-vous !'], ['M', 'Ha ! Le Wi-Fi a peut-être plus de retard que les étudiants.']],
+    [['P', 'Allô ? Il y a quelqu’un ? Réveillez-vous !'], ['M', 'Ha ! Le Wi-Fi a peut-être plus de retard que vous.']],
     [['M', 'Personne n’a répondu. Silence culturel, ou silence de fin de session ?'], ['P', 'Fin de session. Je reconnais l’odeur du café froid.']]
   ],
-  raceWin: [['P', 'Regardez-moi ça courir ! Tabarnak, c’est les Jeux olympiques.'], ['M', 'Ha ! C’est bien la première fois qu’on court vers le tableau dans mon cours.']],
-  fusionOk: [['M', 'Fusion réussie. Vous avez intégré vos deux cultures, mieux que Daimler-Chrysler.'], ['P', 'Tabarnak. Je suis presque ému. Presque.'], ['M', 'Ha ! Il est ému. Notez la date.']],
-  fusionKo: [['P', 'Fusion ratée ! Comme en 2007. Sont vilains étudiants.'], ['M', 'Ha ! Deux cultures, deux réponses : c’est exactement le cas qu’on vient d’étudier.']],
-  final: [['M', 'Bravo à tous. Une belle démonstration de ce que la diversité apporte quand elle est bien gérée.'], ['P', 'Sont vilains étudiants… mais c’est mes vilains étudiants préférés. Tabarnak que je suis fier.'], ['M', 'Ha ha ! Il ne le dira qu’une fois. Merci à l’équipe Charlie !']]
+  raceWin: [['P', 'Tabarnak, regardez-moi ça courir ! On se croirait aux Jeux olympiques.'], ['M', 'Ha ! C’est bien la première fois qu’on court vers le tableau dans mon cours.']],
+  fusionOk: [['M', 'Fusion réussie. Vous avez intégré vos deux cultures, mieux que Daimler-Chrysler.'], ['P', 'Tabarnak. Je suis presque ému.'], ['M', 'Ha ! Il est ému. Notez la date.']],
+  fusionKo: [['P', 'Fusion ratée. Comme en 2007, finalement.'], ['M', 'Deux cultures, deux réponses : c’est exactement le cas qu’on vient d’étudier.']],
+  final: [['M', 'Bravo à tous. Une belle démonstration de ce que la diversité apporte quand elle est bien gérée.'], ['P', 'Sont vilains étudiants… mais ce sont mes vilains étudiants préférés.'], ['M', 'Ha ha ! Il ne le dira qu’une fois. Merci à l’équipe Charlie !']]
 };

@@ -9,6 +9,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 export const ROWS = [-2.6, -0.6, 1.4, 3.4];
 export const TABLES = [-4.6, 0, 4.6];
@@ -37,10 +38,10 @@ export function createClassroom(canvas, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .82;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#0c1113');
-  const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 90);
+  const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 90);
 
   const mat = (c, r = 0.8, m = 0, x = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: r, metalness: m }, x));
   const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
@@ -50,12 +51,12 @@ export function createClassroom(canvas, opts = {}) {
 
   /* ---------- extérieur ---------- */
   const sky = tex(2048, 800, (g, w, h) => {
-    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#6fa6d6'); gr.addColorStop(.6, '#bcd7ea'); gr.addColorStop(1, '#e6eef2');
+    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#4f78a8'); gr.addColorStop(.45, '#d9a77a'); gr.addColorStop(.75, '#ffc98f'); gr.addColorStop(1, '#ffe2b8');
     g.fillStyle = gr; g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(255,255,255,.55)'; for (let i = 0; i < 14; i++) { const x = rnd() * w, y = 80 + rnd() * 220; g.beginPath(); g.ellipse(x, y, 120 + rnd() * 160, 22 + rnd() * 20, 0, 0, 7); g.fill(); }
-    for (let i = 0; i < 26; i++) { const bw = 60 + rnd() * 140, bh = 120 + rnd() * 260, x = rnd() * w; g.fillStyle = `rgb(${120 + rnd() * 30 | 0},${132 + rnd() * 25 | 0},${145 + rnd() * 20 | 0})`; g.fillRect(x, h - 200 - bh, bw, bh + 200);
-      g.fillStyle = 'rgba(230,240,250,.35)'; for (let yy = h - 190 - bh; yy < h - 210; yy += 22) for (let xx = x + 8; xx < x + bw - 10; xx += 18) g.fillRect(xx, yy, 9, 10); }
-    for (let i = 0; i < 70; i++) { const x = rnd() * w, r = 40 + rnd() * 60; g.fillStyle = ['#5f7d4f', '#6d8c55', '#4f6c44', '#86995c'][i % 4]; g.beginPath(); g.arc(x, h - 60 - rnd() * 60, r, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(255,214,170,.45)'; for (let i = 0; i < 14; i++) { const x = rnd() * w, y = 80 + rnd() * 220; g.beginPath(); g.ellipse(x, y, 120 + rnd() * 160, 22 + rnd() * 20, 0, 0, 7); g.fill(); }
+    for (let i = 0; i < 26; i++) { const bw = 60 + rnd() * 140, bh = 120 + rnd() * 260, x = rnd() * w; g.fillStyle = `rgb(${70 + rnd() * 30 | 0},${66 + rnd() * 22 | 0},${78 + rnd() * 20 | 0})`; g.fillRect(x, h - 200 - bh, bw, bh + 200);
+      g.fillStyle = rnd() < .5 ? 'rgba(255,205,140,.55)' : 'rgba(255,230,190,.25)'; for (let yy = h - 190 - bh; yy < h - 210; yy += 22) for (let xx = x + 8; xx < x + bw - 10; xx += 18) g.fillRect(xx, yy, 9, 10); }
+    for (let i = 0; i < 70; i++) { const x = rnd() * w, r = 40 + rnd() * 60; g.fillStyle = ['#3d4a30', '#4a5634', '#323d2a', '#5c6038'][i % 4]; g.beginPath(); g.arc(x, h - 60 - rnd() * 60, r, 0, 7); g.fill(); }
   });
   const skyM = new THREE.Mesh(new THREE.PlaneGeometry(70, 27), new THREE.MeshBasicMaterial({ map: sky }));
   skyM.position.set(-24, 3, 0); skyM.rotation.y = Math.PI / 2; scene.add(skyM);
@@ -63,15 +64,16 @@ export function createClassroom(canvas, opts = {}) {
   /* ---------- lumière ---------- */
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
-  scene.add(new THREE.HemisphereLight('#e4edf5', '#857a68', 0.25));
-  const sun = new THREE.DirectionalLight('#fff0d4', 3.1);
-  sun.position.set(-15, 8.5, 3.5); sun.target.position.set(0, 0, 0.5); scene.add(sun, sun.target);
-  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 10, bottom: -10, near: 2, far: 40 });
+  scene.add(new THREE.HemisphereLight('#a9c2df', '#6b5a48', 0.3));
+  const SUNP = new THREE.Vector3(-16, 5.6, 7), SUNT = new THREE.Vector3(0, 0, 0.5);
+  const sun = new THREE.DirectionalLight('#ffc27a', 5.2);
+  sun.position.copy(SUNP); sun.target.position.copy(SUNT); scene.add(sun, sun.target);
+  sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
+  Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 11, bottom: -11, near: 2, far: 45 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   const panels = [];
   [-4.5, 0, 4.5].forEach(x => [-3.2, 0.6, 4.2].forEach(z => {
-    const l = new THREE.PointLight('#fff6e8', 3.2, 0, 2); l.position.set(x, 2.95, z); scene.add(l);
+    const l = new THREE.PointLight('#ffe9cf', 2.7, 0, 2); l.position.set(x, 2.95, z); scene.add(l);
     panels.push([x, z]);
   }));
 
@@ -85,7 +87,7 @@ export function createClassroom(canvas, opts = {}) {
     g.strokeStyle = 'rgba(110,98,80,.55)'; g.lineWidth = 3; for (let i = 0; i <= n; i++) { g.beginPath(); g.moveTo(i * s, 0); g.lineTo(i * s, h); g.moveTo(0, i * s); g.lineTo(w, i * s); g.stroke(); }
   });
   floorT.wrapS = floorT.wrapT = THREE.RepeatWrapping; floorT.repeat.set(16 / 2.4, 13 / 2.4);
-  const floor = add(new THREE.PlaneGeometry(16, 13), mat('#ffffff', .62, 0, { map: floorT }), 0, 0, 0, scene, false);
+  const floor = add(new THREE.PlaneGeometry(16, 13), new THREE.MeshPhysicalMaterial({ color: '#ffffff', map: floorT, roughness: .5, clearcoat: .55, clearcoatRoughness: .12 }), 0, 0, 0, scene, false);
   floor.rotation.x = -Math.PI / 2;
 
   /* ---------- murs ---------- */
@@ -106,6 +108,29 @@ export function createClassroom(canvas, opts = {}) {
     const rad = add(B(.1, .5, len - .4), mat('#e8e6e1', .5, .2), -7.9, .5, zc);
     for (let z = a + .3; z < b - .25; z += .09) add(B(.02, .46, .02), mat('#d7d4ce', .5, .2), -7.84, .5, z, scene, false);
   });
+  /* rayons de soleil volumétriques (faux) et poussière */
+  const SD = SUNT.clone().sub(SUNP).normalize(), fxObjects = [];
+  const beamMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { uCol: { value: new THREE.Color('#ffcf91') }, uI: { value: .07 } },
+    vertexShader: 'attribute float t; varying float vT; varying vec3 vP; void main(){ vT=t; vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+    fragmentShader: 'uniform vec3 uCol; uniform float uI; varying float vT; varying vec3 vP; void main(){ float a=uI*(1.-vT)*(0.75+0.25*sin(vP.z*3.+vP.y*2.)); gl_FragColor=vec4(uCol*a,a); }'
+  });
+  const toFloor = p => p.clone().addScaledVector(SD, -p.y / SD.y);
+  WIN.forEach(([a, b]) => {
+    const w = [[a + .05, .95], [b - .05, .95], [b - .05, 2.55], [a + .05, 2.55]].map(([z, y]) => new THREE.Vector3(-8.0, y, z));
+    const f = w.map(toFloor);
+    const pos = [], tt = [];
+    const quad = (p0, p1, p2, p3, t0, t1, t2, t3) => { [[p0, t0], [p1, t1], [p2, t2], [p0, t0], [p2, t2], [p3, t3]].forEach(([p, t]) => { pos.push(p.x, p.y, p.z); tt.push(t); }); };
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; quad(w[i], w[j], f[j], f[i], 0, 0, 1, 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('t', new THREE.Float32BufferAttribute(tt, 1));
+    const m = new THREE.Mesh(g, beamMat); m.renderOrder = 5; m.frustumCulled = false; scene.add(m); fxObjects.push(m);
+  });
+  const dustN = 700, dp = new Float32Array(dustN * 3), dSeed = [];
+  for (let i = 0; i < dustN; i++) { const z = -6 + rnd() * 12, y = .2 + rnd() * 2.6, x = -7.8 + rnd() * 7; dp.set([x, y, z], i * 3); dSeed.push(rnd() * 6.28); }
+  const dustG = new THREE.BufferGeometry(); dustG.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+  const dust = new THREE.Points(dustG, new THREE.PointsMaterial({ color: '#ffd9a8', size: .018, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(dust); fxObjects.push(dust);
   add(B(.25, 3.4, 4.3), wallM, 8.125, 1.6, -4.45);
   add(B(.25, 3.4, 8.1), wallM, 8.125, 1.6, 2.45);
   add(B(.25, 1.2, 1.4), wallM, 8.125, 2.7, -1.7);
@@ -206,6 +231,7 @@ export function createClassroom(canvas, opts = {}) {
   const flagM = add(new THREE.PlaneGeometry(.8, .5), new THREE.MeshStandardMaterial({ map: flagT, side: THREE.DoubleSide }), .42, 2.1, 0, flag); flag.rotation.y = Math.PI; flagM.castShadow = true;
 
   scene.traverse(o => { if (o.isMesh && o.material && o.material.isMeshStandardMaterial && !o.material.emissiveMap) o.material.envMapIntensity = .35; });
+  try { scene.environment = pmrem.fromScene(scene, 0.02, 0.1, 60).texture; } catch (e) { }
   /* ---------- personnages réalistes (modèles glTF animés) ---------- */
   const people = new Map();
   const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
@@ -317,21 +343,44 @@ export function createClassroom(canvas, opts = {}) {
     if (v3.z > 1) return null;
     const c = renderer.domElement; return { x: (v3.x + 1) / 2 * c.clientWidth, y: (1 - v3.y) / 2 * c.clientHeight };
   }
-  let composer = null, gtao = null, hq = true;
+  let composer = null, gtao = null, grade = null, hq = true;
   try {
-    composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
-    gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .45, distanceExponent: 1.5, thickness: 1.2, scale: 1 }); gtao.blendIntensity = .9; composer.addPass(gtao);
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(800, 450), .14, .35, 1.0));
+    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: 4 })); composer.addPass(new RenderPass(scene, camera));
+    gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .5, distanceExponent: 1.6, thickness: 1.3, scale: 1.1 }); gtao.blendIntensity = 1.0; composer.addPass(gtao);
+    const gtaoRender = gtao.render.bind(gtao); gtao.render = (...args) => { fxObjects.forEach(o => o.visible = false); gtaoRender(...args); fxObjects.forEach(o => o.visible = true); };
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(800, 450), .32, .55, .82));
     composer.addPass(new OutputPass());
+    grade = new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(800, 450) } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform vec2 res; varying vec2 vUv;
+        float rand(vec2 c){ return fract(sin(dot(c, vec2(12.9898,78.233))) * 43758.5453); }
+        void main(){
+          vec2 d = vUv - .5; float r2 = dot(d, d); vec2 off = d * r2 * .012;
+          vec3 c = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
+          c = clamp(c, 0., 1.);
+          c = mix(c, c * c * (3. - 2. * c), .38);
+          float l = dot(c, vec3(.2126, .7152, .0722));
+          c = mix(vec3(l), c, 1.16);
+          c += mix(vec3(-.018, .006, .03), vec3(.045, .016, -.03), smoothstep(.15, .85, l));
+          c *= mix(1., smoothstep(1.05, .3, length(d) * 1.3), .5);
+          c += (rand(vUv * res + fract(time) * 91.) - .5) * .03;
+          gl_FragColor = vec4(clamp(c, 0., 1.), 1.);
+        }`
+    });
+    composer.addPass(grade);
   } catch (e) { console.warn('post-traitement indisponible', e); composer = null; }
-  function resize(w, h) { renderer.setSize(w, h, false); if (composer) composer.setSize(w, h); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 66 : 52; camera.updateProjectionMatrix(); }
+  function resize(w, h) { renderer.setSize(w, h, false); if (composer) composer.setSize(w, h); if (grade) grade.uniforms.res.value.set(w, h); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
   function tick(dt) {
     T += dt;
     people.forEach(a => animate(a, dt));
     const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l);
     if (camKey === 'lobby' || camKey === 'wide') { tp.x += Math.sin(T * .12) * .35; tp.z += Math.cos(T * .1) * .2; }
     const k = 1 - Math.exp(-dt * 2.2); camPos.lerp(tp, k); camLook.lerp(tl, k);
-    camera.position.copy(camPos); camera.lookAt(camLook);
+    camera.position.copy(camPos); camera.position.x += Math.sin(T * .9) * .012 + Math.sin(T * 2.3) * .004; camera.position.y += Math.sin(T * 1.3) * .01;
+    camera.lookAt(camLook);
+    if (grade) grade.uniforms.time.value = T;
+    { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
     zoneMeshes.forEach(m => { if (m.userData.hi) { const s = 1 + Math.sin(T * 5) * .05; m.scale.set(s, s, 1); } else m.scale.set(1, 1, 1); });
     flagM.rotation.y = Math.sin(T * 3) * .15;
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
