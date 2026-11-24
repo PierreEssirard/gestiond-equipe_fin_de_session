@@ -98,3 +98,89 @@ export function winner(players) {
   const s = [0, 1].map(t => { const L = Object.values(players || {}).filter(p => isLive(p) && (p.team ? 1 : 0) === t); return L.length ? Math.round(L.reduce((x, p) => x + (p.score || 0), 0) / L.length) : 0; });
   return { avg: s, w: s[0] === s[1] ? -1 : s[0] > s[1] ? 0 : 1 };
 }
+
+/* ---------- synchronisation : instantanés publiés par le projecteur ----------
+   Le projecteur est la seule source de vérité. Il publie l'état de chaque personnage
+   (position, orientation, posture) ; les téléphones l'affichent avec un léger retard
+   en interpolant entre deux instantanés : mouvement fluide et identique partout. */
+export const BIT = { sit: 1, walk: 2, cheer: 4, sad: 8, talk: 16, hidden: 32 };
+export function packPerson(p) {
+  const b = (p.sitting ? BIT.sit : 0) | (p.walking ? BIT.walk : 0) | (p.react === 'cheer' ? BIT.cheer : 0) | (p.react === 'sad' ? BIT.sad : 0) | (p.talk ? BIT.talk : 0) | (p.hidden ? BIT.hidden : 0);
+  const yaw = Math.atan2(Math.sin(p.yaw || 0), Math.cos(p.yaw || 0));
+  return [Math.round(p.x * 100), Math.round(p.z * 100), Math.round(yaw * 100), b];
+}
+export function unpackPerson(v) {
+  const [x, z, y, b] = v;
+  return { x: x / 100, z: z / 100, yaw: y / 100, sitting: !!(b & BIT.sit), walking: !!(b & BIT.walk), react: b & BIT.cheer ? 'cheer' : b & BIT.sad ? 'sad' : null, talk: !!(b & BIT.talk), hidden: !!(b & BIT.hidden) };
+}
+const angLerp = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; };
+/* État de chaque personnage à l'instant rt (temps du projecteur).
+   buf : instantanés {t, a:{id:[...]}} triés par t croissant. */
+export const GAP = 300;     // un mouvement ne démarre jamais plus de 300 ms avant l'instantané qui le montre
+export const TELEPORT = 3;  // au-delà de 3 m entre deux instantanés : déplacement instantané
+export function sampleSnaps(buf, rt) {
+  const out = {};
+  if (!buf || !buf.length) return out;
+  const hold = s => { for (const [id, v] of Object.entries(s.a || {})) out[id] = { ...unpackPerson(v), v: 0 }; return out; };
+  if (rt <= buf[0].t) return hold(buf[0]);
+  let i = buf.length - 1;
+  while (i > 0 && buf[i].t > rt) i--;
+  if (i === buf.length - 1) return hold(buf[i]);
+  const s0 = buf[i], s1 = buf[i + 1];
+  for (const [id, v1] of Object.entries(s1.a || {})) {
+    const p1 = unpackPerson(v1), v0 = (s0.a || {})[id];
+    if (!v0) { out[id] = { ...p1, v: 0 }; continue; }
+    const p0 = unpackPerson(v0), dist = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+    /* immobile avant : le mouvement a commencé juste avant s1 (pas d'étirement) ;
+       déjà en marche : le projecteur a simplement publié moins souvent, on interpole sur tout l'intervalle */
+    const t0 = p0.walking ? s0.t : Math.max(s0.t, s1.t - GAP), span = Math.max(1, s1.t - t0), k = Math.min(1, Math.max(0, (rt - t0) / span));
+    if (dist > TELEPORT) { out[id] = { ...(k < 1 ? p0 : p1), v: 0 }; continue; }
+    const base = k >= 1 ? p1 : p0;
+    out[id] = { ...base, x: p0.x + (p1.x - p0.x) * k, z: p0.z + (p1.z - p0.z) * k, yaw: angLerp(p0.yaw, p1.yaw, k),
+      walking: k >= 1 ? p1.walking : (p0.walking || p1.walking), v: k >= 1 ? 0 : dist / (span / 1000) };
+  }
+  return out;
+}
+/* Horloge : convertit le temps du projecteur en temps local (latence minimale observée). */
+export function makeClock() {
+  let off = null, sid = null, lastT = -Infinity;
+  return {
+    /* renvoie true si le projecteur a redémarré (le tampon doit être vidé) */
+    sample(hostT, localT, hostSid) {
+      let reset = false;
+      if (hostSid !== sid || hostT < lastT - 1) { off = null; reset = sid !== null || lastT > -Infinity; sid = hostSid; }
+      lastT = hostT;
+      const o = localT - hostT; off = off === null ? o : Math.min(off, o);
+      return reset;
+    },
+    toHost: localT => off === null ? null : localT - off,
+    get offset() { return off; }
+  };
+}
+
+/* ---------- placement sans chevauchement ----------
+   Le projecteur attribue à chaque joueur la place libre la plus proche de sa cible
+   (coin, valeur sur la ligne, devant le tableau), à au moins `gap` mètres des autres
+   et hors des meubles. Résultat déterministe : même ordre d'arrivée = mêmes places. */
+const OBST = [
+  { x0: -5.6, x1: -3.2, z0: -5.65, z1: -4.2 },            // bureau du prof
+  { x0: -6.35, x1: 6.35, z0: -3.3, z1: 4.6 }              // tables et chaises
+];
+const ROUND = [{ x: -7.4, z: 6.0, r: .6 }, { x: 7.4, z: -6.0, r: .6 }, { x: -7.4, z: -6.0, r: .6 }, { x: 7.6, z: .2, r: .5 }];
+export function floorOk(p) {
+  if (p.x < -7.55 || p.x > 7.55 || p.z < -6.15 || p.z > 6.15) return false;
+  if (OBST.some(o => p.x > o.x0 && p.x < o.x1 && p.z > o.z0 && p.z < o.z1)) return false;
+  return !ROUND.some(o => Math.hypot(p.x - o.x, p.z - o.z) < o.r);
+}
+let CAND = null;
+function candidates() {
+  if (CAND) return CAND;
+  CAND = [{ dx: 0, dz: 0 }];
+  for (let r = .3; r <= 9; r += .3) { const n = Math.max(6, Math.round(2 * Math.PI * r / .3)); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; CAND.push({ dx: Math.cos(a) * r, dz: Math.sin(a) * r }); } }
+  return CAND;
+}
+export function freeSpot(target, taken, { gap = .62, wx = 1, wz = 1, ok = floorOk } = {}) {
+  const C = candidates().map(c => ({ x: target.x + c.dx, z: target.z + c.dz, d: Math.hypot(c.dx * wx, c.dz * wz) })).sort((a, b) => a.d - b.d);
+  for (const c of C) if (ok(c) && taken.every(t => Math.hypot(t.x - c.x, t.z - c.z) >= gap)) return { x: Math.round(c.x * 100) / 100, z: Math.round(c.z * 100) / 100 };
+  return { x: target.x, z: target.z };
+}

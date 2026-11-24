@@ -12,6 +12,8 @@ L'écran du projecteur montre une salle de classe en 3D. Les élèves scannent u
 | `config.js` | **À modifier** : config Firebase, questions, répliques des profs |
 | `scene.js` | La salle 3D (Three.js) |
 | `net.js` | Connexion temps réel (Firebase, ou mode répétition local) |
+| `logic.js` | Règles sans affichage : points, places sans chevauchement, synchronisation (testées par `npm test`) |
+| `tests/` | Tests automatiques (voir plus bas) |
 | `database.rules.json` | Règles de sécurité Firebase à coller dans la console |
 | `voices.js` | Textes parlés (narrateur, profs) partagés entre le jeu et le script de voix |
 | `tools/generer-voix.mjs` | Génère les voix ElevenLabs dans `voix/` (à lancer sur votre ordinateur) |
@@ -127,6 +129,16 @@ Les personnages (dossier `assets/`) sont des modèles humains de type Mixamo (Ad
 ## 8. Après la présentation
 
 Dans la console Firebase, supprimez le nœud `rooms` ou remettez les règles à `".read": false, ".write": false`. Les règles fournies laissent n'importe qui écrire dans `rooms` : c'est pratique pour un événement de classe, pas pour un usage permanent.
+
+## Synchronisation projecteur ↔ téléphones
+
+Le projecteur est la seule source de vérité : c'est lui qui fait bouger les personnages.
+Cinq fois par seconde, tant que quelque chose bouge, il publie un instantané compact de la salle
+(position, orientation, assis/debout, marche, réaction, parole de chaque personnage) dans
+`rooms/<code>/snap`, et l'état du décor (coins, ligne, drapeau, tableau) dans `rooms/<code>/world`.
+Les téléphones n'inventent rien : ils affichent ces instantanés avec 0,3 s de retard, en interpolant
+entre deux instantanés. Résultat mesuré par les tests : même position au centimètre près, mouvement
+fluide, décalage de 0,15 à 0,5 s. Si le projecteur est rechargé, les téléphones se recalent tout seuls.
 
 ## Tests automatiques
 

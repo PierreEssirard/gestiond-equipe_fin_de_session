@@ -80,9 +80,9 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=16';
-import { connect } from './net.js?v=16';
-import { pruneSent, phoneMode, zoneSpot, lineSpot, crowdSpot, finalSpots, winner } from './logic.js?v=16';
+import { GAME } from './config.js?v=17';
+import { connect } from './net.js?v=17';
+import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=17';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -112,127 +112,69 @@ async function start() {
   async function boot3d() {
     if (V || booting || !want3d) return; booting = true;
     try {
-      const mod = await import('./scene.js?v=16');
+      const mod = await import('./scene.js?v=17');
       V = makeView(mod);
     } catch (e) { console.warn('3D indisponible', e); want3d = false; }
     booting = false; render(); if (V) V.sync();
   }
-  function makeView({ createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR }) {
+  function makeView({ createClassroom }) {
     const cv = $('cv');
     const R = createClassroom(cv, { lite: true, labelScale: .055, corners: GAME.corners, preload: ['louise', 'joe', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
-    R.addPerson('M', { model: 'louise' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2, fast: true });
-    R.addPerson('P', { model: 'joe' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2, fast: true });
-    R.addPerson('K', { model: 'leonard' }, { x: 3.0, z: -4.3, yaw: Math.PI / 2 });
-    R.addPerson('Mi', { model: 'ben' }, { x: 4.4, z: -4.3, yaw: -Math.PI / 2 });
-    R.setVisible('K', false); R.setVisible('Mi', false);
-    R.ready.then(() => setTimeout(() => $('load').classList.add('off'), 600));
-    const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+    /* mêmes personnages que le projecteur ; leur état vient uniquement des instantanés publiés par le projecteur */
+    const PROF = { M: 'louise', P: 'joe', K: 'leonard', Mi: 'ben' };
     const MODELS = ['s_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'];
-    const av = new Map(); // pid -> {seat, team}
-    let lastStep = null, lastPhase = null, unsubA = null, ansKey = null, answers = {};
-    const live = () => Object.entries(players).filter(([, p]) => p && p.name);
-    const homeOf = pid => { const a = av.get(pid); if (a && a.seat !== null && SEATS[a.seat]) return SEATS[a.seat]; const h = hash(pid); return { x: -5 + (h % 100) / 10, z: 5.2 + (h >>> 8) % 3 * .4 }; };
-    function goHome(pid, delay = 0) { const a = av.get(pid); if (!a) return; if (a.seat !== null && SEATS[a.seat]) R.sitAt(pid, SEATS[a.seat], delay); else { const h = homeOf(pid); R.moveTo(pid, h.x, h.z, { face: Math.PI, delay }); } }
-    function syncPeople() {
-      const fresh = state && state.kind === 'lobby';
-      for (const [id, p] of live()) {
-        const team = p.team ? 1 : 0, seat = Number.isInteger(p.seat) ? p.seat : null;
-        let a = av.get(id);
-        if (a) { if (a.seat !== seat) { a.seat = seat; goHome(id); } continue; }
-        av.set(id, a = { seat, team });
-        const mine = id === pid, h = homeOf(id);
-        if (fresh) { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: mine ? 'Toi' : undefined, me: mine, color: GAME.teams[team].color }); R.moveTo(id, DOOR.x, DOOR.z, { direct: true }); setTimeout(() => goHome(id), 500); }
-        else { R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { x: h.x, z: h.z, yaw: Math.PI, label: mine ? 'Toi' : undefined, me: mine, color: GAME.teams[team].color }); goHome(id); }
-      }
-      for (const id of [...av.keys()]) if (!players[id] || !players[id].name) { av.delete(id); R.removePerson(id); }
+    R.ready.then(() => setTimeout(() => $('load').classList.add('off'), 400));
+    const clock = makeClock(); let buf = [], lastWorld = null;
+    const DELAY = 300; // ms de retard d'affichage : absorbe les irrégularités du réseau
+    net.onSnap(sn => {
+      if (!sn || !sn.a) return;
+      if (clock.sample(sn.t, performance.now(), sn.sid)) buf = [];
+      if (buf.length && sn.t <= buf[buf.length - 1].t) return;
+      buf.push(sn); if (buf.length > 40) buf.splice(0, buf.length - 40);
+    });
+    function applyWorld(w) {
+      if (!w) return; lastWorld = w;
+      R.setZones(!!w.zones?.[0], w.zones?.[1] ?? -1); R.setLine(!!w.line); R.setFlag(w.flag ?? null);
+      if (w.screen) R.setScreen(w.screen);
     }
-    function onAnswers(v) {
-      const prev = answers; answers = v || {};
-      if (!state || state.kind !== 'q') return;
-      const type = state.q.type;
-      for (const [id, a] of Object.entries(answers)) {
-        if (prev[id] && prev[id].v === a.v) continue;
-        if (!av.has(id)) continue;
-        if (type === 'corners' || type === 'fusion') { const z = zoneSpot(ZONES[a.v] || ZONES[0], id, state.key); R.moveTo(id, z.x, z.z, { face: z.face }); }
-        if (type === 'line') { const l = lineSpot(a.v, id, state.key, lineX, LINE_Z); R.moveTo(id, l.x, l.z, { face: l.face }); }
-        if (type === 'standsit') { const s = homeOf(id); if (a.v === true) R.moveTo(id, s.x, s.z + .42, { direct: true, face: Math.PI }); }
-      }
+    net.onWorld(applyWorld);
+    function ensure(id) {
+      if (R.people.has(id)) return true;
+      if (PROF[id]) { R.addPerson(id, { model: PROF[id] }, { fast: true }); return true; }
+      const p = players[id]; if (!p || !p.name) return false;
+      const mine = id === pid, team = p.team ? 1 : 0;
+      R.addPerson(id, { model: MODELS[hash(id) % MODELS.length] }, { label: mine ? 'Toi' : undefined, me: mine, color: GAME.teams[team].color });
+      return true;
     }
+    function step() {
+      const now = performance.now(), ht = clock.toHost(now);
+      if (ht === null || !buf.length) return;
+      const rt = ht - DELAY;
+      while (buf.length > 2 && buf[1].t < rt - 1000) buf.shift();
+      const st = sampleSnaps(buf, rt);
+      for (const [id, v] of Object.entries(st)) if (ensure(id)) R.drive(id, v);
+      for (const id of [...R.people.keys()]) if (!st[id] && !PROF[id]) R.removePerson(id);
+    }
+    /* caméra : toujours sur son propre joueur (de face pour voir sa réaction au résultat) */
     let curView = null;
-    function view(k) {
-      if (!av.has(pid)) { curView = null; R.cam('wide'); return; }
-      if (curView === k) return; curView = k; R.follow(pid, k === 'front' ? 'front' : 'back');
+    function view() {
+      const k = state && (state.phase === 'reveal' || state.kind === 'final') ? 'front' : 'back';
+      if (!R.people.has(pid)) { if (curView !== 'wide') { curView = 'wide'; R.cam('wide'); } return; }
+      if (curView === k) return; curView = k; R.follow(pid, k);
     }
-    /* le projecteur fait foi : il publie les positions chaque seconde, le téléphone corrige les écarts */
-    function onPos(m) {
-      for (const [id, v] of Object.entries(m || {})) {
-        const a = R.people.get(id); if (!a || !av.has(id)) continue;
-        const [hx, hz, hs, hw, hy] = v; if (hw) continue; // en marche sur le projecteur : on attend qu'il s'arrête
-        const end = a.path.length ? a.path[a.path.length - 1] : { x: a.x, z: a.z };
-        const d = Math.hypot(end.x - hx, end.z - hz);
-        if (d > .45) { if (Math.hypot(a.x - hx, a.z - hz) > 4) R.place(id, hx, hz, hy); R.moveTo(id, hx, hz, { after: hs ? 'sit' : 'stand', face: hy }); }
-        else if (!a.path.length && !!hs !== a.sitting) { if (hs) R.moveTo(id, hx, hz, { after: 'sit' }); else R.moveTo(id, a.x, a.z, { face: hy }); }
-      }
-    }
-    net.onPos(onPos);
-    function enterStep(s) {
-      R.setZones(false); R.setLine(false); R.setFlag(null); R.setVisible('K', false); R.setVisible('Mi', false);
-      R.moveTo('M', -2.7, -5.3, { face: 0 }); R.moveTo('P', .5, -5.4, { face: 0 });
-      if (s.kind === 'lobby') { av.forEach((a, id) => goHome(id)); R.setScreen({ top: GAME.title, main: 'La partie va commencer', foot: 'Code : ' + ROOM }); }
-      if (s.kind === 'intro') { av.forEach((a, id) => goHome(id, Math.random() * .8)); R.setScreen({ top: `Activité ${s.act.i + 1} · ${s.act.name}`, main: s.act.rule, foot: '' }); if (s.act.type === 'corners' || s.act.type === 'fusion') R.setZones(true); if (s.act.type === 'line') R.setLine(true); }
-      if (s.kind === 'q') {
-        const t = s.q.type; R.setScreen({ top: `${s.act.name} · question ${s.q.idx + 1}`, main: s.q.text, foot: 'Répondez sur votre téléphone' });
-        if (t === 'corners' || t === 'fusion') R.setZones(true);
-        if (t === 'line') R.setLine(true);
-        if (t === 'fusion') av.forEach((a, id) => { const c = crowdSpot(id, s.key); R.moveTo(id, c.x, c.z, { face: 0, delay: c.delay }); });
-        if (t === 'standsit') av.forEach((a, id) => goHome(id));
-      }
-      if (s.kind === 'final') {
-        const { w } = winner(players), fs = finalSpots([...av].map(([id, a]) => ({ pid: id, team: a.team })));
-        av.forEach((a, id) => { const f = fs[id]; R.moveTo(id, f.x, f.z, { face: 0, delay: Math.random() }); });
-        setTimeout(() => { if (state && state.kind === 'final') av.forEach((a, id) => R.react(id, w < 0 || a.team === w ? 'cheer' : 'sad', 6)); }, 3200);
-        R.setScreen({ top: 'Résultat final', main: w < 0 ? 'Égalité : la fusion est réussie' : GAME.teams[w].name + ' remporte la partie', foot: 'Merci d’avoir joué · équipe Charlie' });
-      }
-    }
-    function enterPhase(s) {
-      if (s.phase === 'scene') { R.setVisible('K', true); R.setVisible('Mi', true); R.place('K', 3.0, -4.3, Math.PI / 2); R.place('Mi', 4.4, -4.3, -Math.PI / 2); R.talk('K', 4); setTimeout(() => R.talk('Mi', 4), 4200); }
-      if (s.phase === 'reveal') {
-        const t = s.q.type, rv = s.reveal || {};
-        if ((t === 'corners' || t === 'fusion') && rv.ok !== null) R.setZones(true, rv.ok);
-        if (t === 'line' && rv.val !== null) R.setFlag(rv.val);
-        const tryReact = (n = 0) => {
-          let pending = 0;
-          for (const [id, p] of live()) { if (!answers[id]) continue; const l = p.last; if (!l || l.key !== s.key) { pending++; continue; } R.react(id, l.ok ? 'cheer' : 'sad', 4); }
-          if (pending && n < 6) setTimeout(() => tryReact(n + 1), 500);
-        };
-        setTimeout(tryReact, 300);
-        const f = s.result && s.result.firsts; if (t === 'race' && f) f.forEach((id, i) => setTimeout(() => R.moveTo(id, i ? 1.2 : -.4, -4.6, { face: 0 }), 600));
-        setTimeout(() => { R.talk('P', 3.5); setTimeout(() => R.talk('M', 3), 3600); }, 1400);
-      }
-    }
-    function sync() {
-      syncPeople();
-      const s = state; if (!s) return;
-      if (s.key !== ansKey) { if (unsubA) unsubA(); answers = {}; ansKey = s.key; unsubA = s.kind === 'q' ? net.onAnswers(s.key, onAnswers) : null; }
-      if (s.step !== lastStep) { const first = lastStep === null; lastStep = s.step; lastPhase = null; enterStep(s); if (first) setTimeout(() => R.advance(12), 50); }
-      if (s.phase !== lastPhase) { lastPhase = s.phase; enterPhase(s); }
-      // caméra : toujours sur son propre joueur (de face pour voir sa réaction au résultat)
-      view(s.phase === 'reveal' || s.kind === 'final' ? 'front' : 'me');
-    }
+    function sync() { view(); }
     const fit = () => { const r = $('stage').getBoundingClientRect(); if (r.width > 0) R.resize(Math.round(r.width), Math.round(r.height)); };
     new ResizeObserver(fit).observe($('stage')); fit();
     R.cam('wide', true);
     let last = performance.now();
-    let gap = 0;
     const frame = t => {
       const raw = (t - last) / 1000; last = t;
-      const on = !document.hidden && document.body.classList.contains('s3d') && !window.__pause;
-      if (!on) gap += raw;
-      else { if (gap + raw > .5) R.advance(Math.min(20, gap + raw)); gap = 0; R.tick(Math.min(.05, raw)); }
+      step(); view();
+      if (!document.hidden && document.body.classList.contains('s3d') && !window.__pause) R.tick(Math.min(.05, raw));
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
-    window.__phone = { R, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return cv.toDataURL('image/jpeg', .85); } };
+    window.__phone = { R, buf: () => buf, clock, step, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) { step(); R.tick(dt); } return cv.toDataURL('image/jpeg', .85); } };
     return { sync, R };
   }
 

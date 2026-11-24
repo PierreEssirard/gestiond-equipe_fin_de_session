@@ -117,3 +117,74 @@ test('gagnant final', () => {
   assert.equal(winner({ a: { name: 'a', team: 0, score: 300 }, b: { name: 'b', team: 1, score: 100 } }).w, 0);
   assert.equal(winner({ a: { name: 'a', team: 0, score: 100 }, b: { name: 'b', team: 1, score: 100 } }).w, -1);
 });
+
+import { packPerson, unpackPerson, sampleSnaps, makeClock, GAP } from '../logic.js';
+test('instantanés : encodage compact sans perte utile', () => {
+  const p = { x: 1.234, z: -4.567, yaw: 7, sitting: true, walking: false, react: 'cheer', talk: true, hidden: false };
+  const q = unpackPerson(packPerson(p));
+  assert.equal(q.x, 1.23); assert.equal(q.z, -4.57); assert.ok(Math.abs(Math.sin(q.yaw) - Math.sin(7)) < .01);
+  assert.equal(q.sitting, true); assert.equal(q.react, 'cheer'); assert.equal(q.talk, true); assert.equal(q.hidden, false);
+  assert.ok(packPerson({ x: 0, z: 0, yaw: 0 }).every(Number.isFinite));
+});
+test('instantanés : interpolation fluide entre deux positions', () => {
+  const P = (x, z, o = {}) => packPerson({ x, z, yaw: 0, ...o });
+  const buf = [{ t: 1000, a: { a: P(0, 0) } }, { t: 1200, a: { a: P(1, 0, { walking: true }) } }, { t: 1400, a: { a: P(2, 0) } }];
+  assert.equal(sampleSnaps(buf, 900).a.x, 0);              // avant : premier état
+  assert.equal(sampleSnaps(buf, 1100).a.x, .5);            // au milieu
+  assert.ok(sampleSnaps(buf, 1100).a.walking);
+  assert.equal(sampleSnaps(buf, 1300).a.x, 1.5);
+  assert.equal(sampleSnaps(buf, 5000).a.x, 2);             // après : dernier état, à l'arrêt
+  assert.equal(sampleSnaps(buf, 5000).a.walking, false);
+  assert.deepEqual(sampleSnaps([], 1000), {});
+});
+test('instantanés : après une longue pause, le départ n’est pas étiré', () => {
+  const P = x => packPerson({ x, z: 0, yaw: 0 });
+  const buf = [{ t: 0, a: { a: P(0) } }, { t: 10000, a: { a: P(.3) } }];
+  assert.equal(sampleSnaps(buf, 5000).a.x, 0);              // immobile jusqu'à 300 ms avant
+  assert.equal(sampleSnaps(buf, 10000 - GAP / 2).a.x, .15);
+});
+test('instantanés : projecteur lent pendant une marche = mouvement continu, sans saccade', () => {
+  const P = (x, w) => packPerson({ x, z: 0, yaw: 0, walking: w });
+  const buf = [{ t: 0, a: { a: P(0, true) } }, { t: 1000, a: { a: P(1.3, true) } }];
+  assert.equal(sampleSnaps(buf, 500).a.x, .65);
+});
+test('instantanés : téléportation et personnages qui arrivent ou partent', () => {
+  const P = x => packPerson({ x, z: 0, yaw: 0 });
+  const buf = [{ t: 0, a: { a: P(0), gone: P(1) } }, { t: 200, a: { a: P(6), b: P(2) } }];
+  assert.equal(sampleSnaps(buf, 100).a.x, 0);               // 6 m en 200 ms : pas de glissade
+  assert.equal(sampleSnaps(buf, 200).a.x, 6);
+  assert.equal(sampleSnaps(buf, 100).b.x, 2);               // nouveau : apparaît directement
+  assert.equal(sampleSnaps(buf, 100).gone, undefined);      // parti : retiré
+});
+test('horloge : latence minimale et redémarrage du projecteur', () => {
+  const c = makeClock();
+  assert.equal(c.toHost(5000), null);
+  c.sample(1000, 5300, 'x'); c.sample(1200, 5450, 'x'); c.sample(1400, 5800, 'x');
+  assert.equal(c.offset, 4250); assert.equal(c.toHost(6250), 2000);
+  assert.equal(c.sample(1600, 5900, 'x'), false);
+  assert.equal(c.sample(50, 6000, 'y'), true);              // nouveau projecteur : on repart de zéro
+  assert.equal(c.offset, 5950);
+});
+
+import { freeSpot, floorOk } from '../logic.js';
+test('placement : 30 joueurs dans le même coin, sans chevauchement ni meuble', () => {
+  for (const Z of [{ x: -6.5, z: -4.7 }, { x: 6.5, z: -4.7 }, { x: -6.5, z: 5.3 }, { x: 6.5, z: 5.3 }]) {
+    const taken = [{ x: -2.7, z: -5.3 }, { x: .5, z: -5.4 }];
+    for (let i = 0; i < 30; i++) taken.push(freeSpot(Z, taken));
+    for (let i = 0; i < taken.length; i++) for (let j = i + 1; j < taken.length; j++) assert.ok(Math.hypot(taken[i].x - taken[j].x, taken[i].z - taken[j].z) >= .61, 'chevauchement');
+    taken.slice(2).forEach(p => assert.ok(floorOk(p), 'dans un meuble ou un mur : ' + JSON.stringify(p)));
+    assert.ok(Math.hypot(taken[2].x - Z.x, taken[2].z - Z.z) < .01, 'le premier arrivé est au centre du coin');
+  }
+});
+test('placement : sur la ligne, on s’écarte vers l’avant ou l’arrière plutôt que de changer de valeur', () => {
+  const taken = [], T = { x: 0, z: 5.55 };
+  for (let i = 0; i < 3; i++) taken.push(freeSpot(T, taken, { wx: 3 }));
+  assert.ok(taken.slice(0, 2).every(p => Math.abs(p.x) < .35), JSON.stringify(taken)); // deux rangées dans le couloir du fond
+  assert.ok(Math.abs(taken[2].x) < .75, JSON.stringify(taken));                      // la troisième juste à côté
+});
+test('placement : obstacles', () => {
+  assert.equal(floorOk({ x: 0, z: 0 }), false);       // tables
+  assert.equal(floorOk({ x: -4.4, z: -4.9 }), false); // bureau du prof
+  assert.equal(floorOk({ x: 9, z: 0 }), false);       // hors salle
+  assert.equal(floorOk({ x: 0, z: -4.5 }), true);     // devant le tableau
+});

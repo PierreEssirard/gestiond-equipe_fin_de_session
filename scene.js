@@ -42,7 +42,7 @@ export function createClassroom(canvas, opts = {}) {
   renderer.setPixelRatio(BASE_PR);
   renderer.shadowMap.autoUpdate = false; let frameN = 0;
   renderer.info.autoReset = false;
-  renderer.shadowMap.enabled = !LITE; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#0c1113');
@@ -73,7 +73,7 @@ export function createClassroom(canvas, opts = {}) {
   const SUNP = new THREE.Vector3(-16, 5.6, 7), SUNT = new THREE.Vector3(0, 0, 0.5);
   const sun = new THREE.DirectionalLight('#ffc27a', 5.2);
   sun.position.copy(SUNP); sun.target.position.copy(SUNT); scene.add(sun, sun.target);
-  sun.castShadow = !LITE; sun.shadow.mapSize.set(2048, 2048);
+  sun.castShadow = true; sun.shadow.mapSize.set(LITE ? 1024 : 2048, LITE ? 1024 : 2048);
   Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 11, bottom: -11, near: 2, far: 45 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   const panels = [];
@@ -131,11 +131,15 @@ export function createClassroom(canvas, opts = {}) {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('t', new THREE.Float32BufferAttribute(tt, 1));
     const m = new THREE.Mesh(g, beamMat); m.renderOrder = 5; m.frustumCulled = false; scene.add(m); fxObjects.push(m);
   });
-  const dustN = 700, dp = new Float32Array(dustN * 3), dSeed = [];
-  for (let i = 0; i < dustN; i++) { const z = -6 + rnd() * 12, y = .2 + rnd() * 2.6, x = -7.8 + rnd() * 7; dp.set([x, y, z], i * 3); dSeed.push(rnd() * 6.28); }
+  /* poussière : uniquement dans les faisceaux de soleil (pas de points blancs dans toute la salle) */
+  const dustN = 520, dp = new Float32Array(dustN * 3), dSeed = [];
+  for (let i = 0; i < dustN; i++) {
+    const [a, b] = WIN[i % 3], w0 = new THREE.Vector3(-8.0, .95 + rnd() * 1.6, a + .05 + rnd() * (b - a - .1)), f0 = toFloor(w0);
+    const p = w0.lerp(f0, .08 + rnd() * .8); dp.set([p.x, p.y, p.z], i * 3); dSeed.push(rnd() * 6.28);
+  }
   const dustG = new THREE.BufferGeometry(); dustG.setAttribute('position', new THREE.BufferAttribute(dp, 3));
-  const dust = new THREE.Points(dustG, new THREE.PointsMaterial({ color: '#ffd9a8', size: .018, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending }));
-  scene.add(dust); fxObjects.push(dust);
+  const dust = new THREE.Points(dustG, new THREE.PointsMaterial({ color: '#ffd9a8', size: .011, transparent: true, opacity: .26, depthWrite: false, blending: THREE.AdditiveBlending }));
+  scene.add(dust); fxObjects.push(dust); dust.visible = !LITE;
   add(B(.25, 3.4, 4.3), wallM, 8.125, 1.6, -4.45);
   add(B(.25, 3.4, 8.1), wallM, 8.125, 1.6, 2.45);
   add(B(.25, 1.2, 1.4), wallM, 8.125, 2.7, -1.7);
@@ -289,7 +293,7 @@ export function createClassroom(canvas, opts = {}) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, sizeAttenuation: false }));
     const ls = opts.labelScale || .026; sp.scale.set(w / 76 * ls, ls, 1); sp.position.y = 1.98; sp.renderOrder = 10; return sp;
   }
-  const discGeo = new THREE.CircleGeometry(.32, 32);
+  const discGeo = new THREE.RingGeometry(.24, .31, 40);
   function addPerson(id, look, o = {}) {
     if (people.has(id)) return people.get(id);
     const root = new THREE.Group(), body = new THREE.Group(); root.add(body); scene.add(root);
@@ -301,7 +305,7 @@ export function createClassroom(canvas, opts = {}) {
       const arrow = new THREE.Mesh(new THREE.ConeGeometry(.11, .22, 4), new THREE.MeshBasicMaterial({ color: '#ffd34d' }));
       arrow.rotation.x = Math.PI; arrow.position.y = 2.25; root.add(arrow); a.arrow = arrow;
     }
-    if (o.color) { const d = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: .55, depthWrite: false })); d.rotation.x = -Math.PI / 2; d.position.y = .015; root.add(d); a.disc = d; }
+    if (o.color) { const d = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: .7, depthWrite: false })); d.rotation.x = -Math.PI / 2; d.position.y = .015; root.add(d); a.disc = d; }
     Promise.all([loadModel(look.model || 'kate'), ready]).then(([g]) => {
       if (!people.has(id)) return;
       const m = cloneSkinned(g.scene); m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; if (n.geometry) { n.geometry.computeBoundingSphere(); n.geometry.boundingSphere.radius *= 1.4; } } });
@@ -329,14 +333,26 @@ export function createClassroom(canvas, opts = {}) {
 
   const lerp = (a, b, k) => a + (b - a) * k;
   const qx = new THREE.Quaternion(), AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0);
+  /* marionnette : le téléphone ne simule rien, il affiche l'état publié par le projecteur */
+  function drive(id, s) {
+    const a = people.get(id); if (!a) return;
+    if (!a.puppet) { a.puppet = true; a.sit = s.sitting ? 1 : 0; }
+    a.path = []; a.delay = 0; a.x = s.x; a.z = s.z; a.yaw = a.tyaw = s.yaw;
+    a.walking = !!s.walking; a.sitting = !!s.sitting;
+    a.react = s.react ? { kind: s.react, until: T + .5 } : null;
+    a.talk = s.talk ? T + .5 : 0;
+    a.root.visible = !s.hidden;
+    if (s.v > .3) a.spd = Math.min(2.2, s.v);
+  }
   function animate(a, dt) {
-    if (a.delay > 0) a.delay -= dt;
+    if (a.puppet) { }
+    else if (a.delay > 0) a.delay -= dt;
     else if (a.path.length) {
       const t = a.path[0], dx = t.x - a.x, dz = t.z - a.z, d = Math.hypot(dx, dz), st = a.spd * dt;
       if (d <= st) { a.x = t.x; a.z = t.z; a.path.shift(); if (!a.path.length) { a.walking = false; if (a.after === 'sit') { a.sitting = true; a.tyaw = Math.PI; } else if (a.faceYaw !== null) a.tyaw = a.faceYaw; } }
       else { a.x += dx / d * st; a.z += dz / d * st; a.walking = true; a.tyaw = Math.atan2(dx, dz); }
     } else a.walking = false;
-    let dy = a.tyaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); a.yaw += dy * Math.min(1, dt * 7);
+    if (!a.puppet) { let dy = a.tyaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); a.yaw += dy * Math.min(1, dt * 7); }
     a.sit = lerp(a.sit, a.sitting ? 1 : 0, Math.min(1, dt * 5));
     a.root.position.set(a.x, -0.46 * a.sit, a.z); a.root.rotation.y = a.yaw;
     if (a.label) a.label.position.y = a.arrow ? 2.55 : 1.98;
@@ -373,6 +389,11 @@ export function createClassroom(canvas, opts = {}) {
   const camPos = new THREE.Vector3(...CAMS.lobby[0]), camLook = new THREE.Vector3(...CAMS.lobby[1]);
   const tp = new THREE.Vector3(), tl = new THREE.Vector3();
   let fol = { id: null, mode: 'back' };
+  /* [dx, hauteur, dz, visée] : de dos on regarde vers le tableau, de face on regarde le personnage */
+  const FOLLOW = {
+    back: [[.75, 2.15, 2.35, 'ahead'], [-.75, 2.15, 2.35, 'ahead'], [2.3, 2.0, 1.0, 'me'], [-2.3, 2.0, 1.0, 'me'], [.8, 2.3, -2.3, 'me'], [0, 2.8, 0, 'me']],
+    front: [[.55, 1.75, -2.1, 'me'], [-.55, 1.75, -2.1, 'me'], [2.1, 1.7, -1.1, 'me'], [-2.1, 1.7, -1.1, 'me'], [2.2, 1.8, .9, 'me'], [-2.2, 1.8, .9, 'me'], [.6, 2.2, 2.3, 'me'], [0, 2.8, 0, 'me']]
+  };
   function follow(id, mode = 'back', snap) { fol = { id, mode }; camKey = 'follow'; if (snap) snapNext = true; }
   let snapNext = false;
   function cam(k, snap) { if (!CAMS[k]) return; camKey = k; if (snap) { camPos.set(...CAMS[k][0]); camLook.set(...CAMS[k][1]); } }
@@ -386,12 +407,14 @@ export function createClassroom(canvas, opts = {}) {
     const c = renderer.domElement; return { x: (v3.x + 1) / 2 * c.clientWidth, y: (1 - v3.y) / 2 * c.clientHeight };
   }
   let composer = null, gtao = null, grade = null, bloom = null, hq = true;
-  if (!LITE) try {
-    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: 4 })); composer.addPass(new RenderPass(scene, camera));
+  try {
+    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: LITE ? 2 : 4 })); composer.addPass(new RenderPass(scene, camera));
+    if (!LITE) {
     gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .5, distanceExponent: 1.6, thickness: 1.3, scale: 1.1 }); gtao.blendIntensity = 1.0; composer.addPass(gtao);
     const gtaoSize = gtao.setSize.bind(gtao); gtao.setSize = (w, h) => gtaoSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
     const gtaoRender = gtao.render.bind(gtao); gtao.render = (...args) => { fxObjects.forEach(o => o.visible = false); people.forEach(a => a.body.visible = false); gtaoRender(...args); fxObjects.forEach(o => o.visible = true); people.forEach(a => a.body.visible = true); };
     bloom = new UnrealBloomPass(new THREE.Vector2(400, 225), .3, .55, .82); const bloomSize = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bloomSize(Math.max(2, w >> 1), Math.max(2, h >> 1)); composer.addPass(bloom);
+    }
     composer.addPass(new OutputPass());
     grade = new ShaderPass({
       uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(800, 450) }, sharp: { value: .55 } },
@@ -426,12 +449,11 @@ export function createClassroom(canvas, opts = {}) {
       const a = people.get(fol.id);
       if (a) {
         const sy = a.sit * -.3;
-        if (fol.mode === 'front') { tp.set(a.x + .55, 1.75 + sy, a.z - 2.1); tl.set(a.x, 1.0 + sy, a.z); }
-        else { tp.set(a.x + .75, 2.15 + sy * .5, a.z + 2.35); tl.set(a.x - .25, .85, a.z - 2.6); }
-        /* la caméra reste dans la salle (sinon on voit l'extérieur des murs) ;
-           si elle bute contre un mur, elle monte et regarde l'avatar */
-        const cx = Math.max(-7.3, Math.min(7.3, tp.x)), cz = Math.max(-5.9, Math.min(6.0, tp.z));
-        if (cx !== tp.x || cz !== tp.z) { tp.set(cx, 2.7, cz); tl.set(a.x, .8 + sy, a.z); }
+        /* plusieurs angles possibles : on prend le premier qui reste dans la salle (jamais derrière un mur) */
+        const C = FOLLOW[fol.mode] || FOLLOW.back, inRoom = (x, z) => x > -7.3 && x < 7.3 && z > -5.9 && z < 6.0;
+        let c = C.find(o => inRoom(a.x + o[0], a.z + o[2])) || C[C.length - 1];
+        tp.set(Math.max(-7.3, Math.min(7.3, a.x + c[0])), c[1] + sy * .5, Math.max(-5.9, Math.min(6.0, a.z + c[2])));
+        if (c[3] === 'ahead') tl.set(a.x - .25, .85, a.z - 2.6); else tl.set(a.x, 1.0 + sy, a.z);
       }
     } else { const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l); }
     if (camKey === 'lobby' || camKey === 'wide') { tp.x += Math.sin(T * .12) * .35; tp.z += Math.cos(T * .1) * .2; }
@@ -443,7 +465,7 @@ export function createClassroom(canvas, opts = {}) {
     if (!LITE) { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
     zoneMeshes.forEach(m => { if (m.userData.hi) { const s = 1 + Math.sin(T * 5) * .05; m.scale.set(s, s, 1); } else m.scale.set(1, 1, 1); });
     flagM.rotation.y = Math.sin(T * 3) * .15;
-    if (!LITE && (++frameN % 2 === 0 || frameN < 4)) renderer.shadowMap.needsUpdate = true;
+    if (++frameN % (LITE ? 3 : 2) === 0 || frameN < 4) renderer.shadowMap.needsUpdate = true;
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
     adapt();
   }
@@ -457,7 +479,13 @@ export function createClassroom(canvas, opts = {}) {
     fpsN++; const now = performance.now(); if (now - fpsT0 < 3000) return;
     fps = fpsN * 1000 / (now - fpsT0); fpsN = 0; fpsT0 = now;
     if (!auto || !hq || document.hidden) return;
-    if (LITE) { if (fps < 24 && rs > .6) { rs = Math.max(.6, rs - .15); applyRes(); } return; }
+    if (LITE) {
+      if (fps >= 26) return;
+      if (composer && hq) { hq = false; return; }                                   // 1) sans étalonnage
+      if (renderer.shadowMap.enabled) { renderer.shadowMap.enabled = false; sun.castShadow = false; scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); }); return; } // 2) sans ombres
+      if (rs > .6) { rs = Math.max(.6, rs - .15); applyRes(); }                    // 3) résolution réduite
+      return;
+    }
     if (last) { const gain = fps / last.fps; if (gain < 1.12) { setLevel(last.lvl); capped = true; } last = null; return; }
     if (fps < 42 && lvl < levels.length - 1 && !capped) { last = { fps, lvl }; setLevel(lvl + 1); }
     else if (fps > 57 && lvl > 0) { capped = false; setLevel(lvl - 1); }
@@ -477,5 +505,5 @@ export function createClassroom(canvas, opts = {}) {
   }
   const setScale = x => { rs = x; applyRes(); };
   const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
-  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  return { setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }

@@ -82,6 +82,8 @@ try {
   await check('équipes équilibrées', async () => { const t = await host.evaluate(() => Object.values(__host.players()).map(p => p.team ? 1 : 0).sort().join()); if (t !== '0,1') throw new Error('équipes : ' + t); });
   await check('chaque joueur reçoit une place', () => wait(host, () => Object.values(__host.players()).every(p => Number.isInteger(p.seat))));
   await check('la salle 3D s’affiche sur le téléphone', () => wait(A, () => window.__phone && document.body.classList.contains('s3d'), null, 30000));
+  // dans ce test, les pages ne dessinent pas (rendu logiciel très lent) ; la synchronisation continue de tourner
+  for (const p of [A, B]) await p.evaluate(() => { window.__pause = true; });
 
   await toFirstQuestion(host);
   await check('question ouverte : les deux téléphones montrent les boutons', async () => { await wait(A, () => !!document.querySelector('[data-v]')); await wait(B, () => !!document.querySelector('[data-v]')); });
@@ -96,10 +98,10 @@ try {
   await check('tout le monde a répondu : la question se ferme', () => wait(host, () => __host.S.phase === 'closed'));
   await check('le téléphone et le projecteur placent les personnages au même endroit', async () => {
     await A.waitForTimeout(800);
-    await host.evaluate(() => __host.R.advance(15)); await A.evaluate(() => __phone.R.advance(15));
+    await host.evaluate(() => __host.R.advance(15)); await A.waitForTimeout(1500);
     const pos = p => p.evaluate(R => ['pA', 'pB'].map(id => { const a = (R === 'h' ? __host.R : __phone.R).people.get(id); return a ? [a.x, a.z] : null; }), p === host ? 'h' : 'p');
     const [h, a] = [await pos(host), await pos(A)];
-    for (let i = 0; i < 2; i++) { if (!h[i] || !a[i]) throw new Error('avatar manquant'); const d = Math.hypot(h[i][0] - a[i][0], h[i][1] - a[i][1]); if (d > .05) throw new Error(`écart de ${d.toFixed(2)} m`); }
+    for (let i = 0; i < 2; i++) { if (!h[i] || !a[i]) throw new Error('avatar manquant'); const d = Math.hypot(h[i][0] - a[i][0], h[i][1] - a[i][1]); if (d > .03) throw new Error(`écart de ${d.toFixed(2)} m`); }
   });
   await check('la caméra du téléphone reste dans la salle (pas d’écran jaune)', async () => {
     const out = await B.evaluate(() => {
@@ -124,11 +126,28 @@ try {
   });
   await check('le téléphone se recale sur les positions du projecteur', async () => {
     await A.evaluate(() => __phone.R.place('pB', 0, 1.2, 0));   // décalage volontaire sur le téléphone
-    await host.evaluate(() => __host.publishPos(true));
-    await A.waitForTimeout(800); await A.evaluate(() => __phone.R.advance(15));
+    await A.waitForTimeout(2500);                                // (pages de test lentes : ~1 image/s)
     const h = await host.evaluate(() => { const a = __host.R.people.get('pB'); return [a.x, a.z]; });
     const p = await A.evaluate(() => { const a = __phone.R.people.get('pB'); return [a.x, a.z]; });
     const d = Math.hypot(h[0] - p[0], h[1] - p[1]); if (d > .1) throw new Error(`écart restant ${d.toFixed(2)} m`);
+  });
+  await check('pendant un déplacement, le téléphone suit le projecteur de façon fluide et avec moins d’1 s de décalage', async () => {
+    // le projecteur fait marcher Bruno à l'autre bout de la salle, en temps réel (sans dessiner, pour aller vite)
+    await host.evaluate(() => { __host.R.moveTo('pB', -6.4, 5.2); window.__hist = []; window.__run = setInterval(() => { __host.R.advance(.05); const a = __host.R.people.get('pB'); __hist.push([Date.now(), a.x, a.z]); }, 50); });
+    await A.evaluate(() => { window.__ph = []; window.__run = setInterval(() => { __phone.step(); const a = __phone.R.people.get('pB'); __ph.push([Date.now(), a.x, a.z, a.walking]); }, 100); });
+    await A.waitForTimeout(9000);
+    const H = await host.evaluate(() => { clearInterval(__run); return __hist; });
+    const P = await A.evaluate(() => { clearInterval(__run); return __ph; });
+    const moving = P.filter((p, i) => i && Math.hypot(p[1] - P[i - 1][1], p[2] - P[i - 1][2]) > .01);
+    if (moving.length < 20) throw new Error('le personnage ne bouge pas sur le téléphone');
+    let maxStep = 0; for (let i = 1; i < P.length; i++) maxStep = Math.max(maxStep, Math.hypot(P[i][1] - P[i - 1][1], P[i][2] - P[i - 1][2]));
+    if (maxStep > .4) throw new Error(`saccade de ${maxStep.toFixed(2)} m en 0,1 s`);
+    const lags = moving.map(p => { let best = null, bd = 1e9; for (const h of H) { const d = Math.hypot(h[1] - p[1], h[2] - p[2]); if (d < bd) { bd = d; best = h; } } return (p[0] - best[0]) / 1000; });
+    const lmax = Math.max(...lags), lmin = Math.min(...lags);
+    if (lmax > 1 || lmin < -0.1) throw new Error(`décalage entre ${lmin.toFixed(2)} et ${lmax.toFixed(2)} s`);
+    if (!moving.some(p => p[3])) throw new Error('pas d’animation de marche sur le téléphone');
+    const end = P[P.length - 1], hend = H[H.length - 1]; if (Math.hypot(end[1] - hend[1], end[2] - hend[2]) > .03) throw new Error('position finale différente');
+    console.log(`         décalage mesuré : ${lmin.toFixed(2)} à ${lmax.toFixed(2)} s`);
   });
   await check('bouton 2D puis 3D : on revient bien à la 3D', async () => {
     await A.click('#tog'); await wait(A, () => !document.body.classList.contains('s3d') && document.getElementById('tog').textContent === '3D');
@@ -188,6 +207,17 @@ try {
 
   // ---- partie complète avec 12 joueurs fictifs ----
   await host.evaluate(() => __host.addBots(12));
+  await check('personne ne se superpose dans les coins (14 joueurs)', async () => {
+    await A.click('[data-v="0"]'); await B.click('[data-v="0"]');
+    await wait(host, () => Object.keys(__host.answers()).length >= 14 || __host.S.phase !== 'open', null, 25000);
+    await host.evaluate(() => __host.R.advance(25));
+    const bad = await host.evaluate(() => {
+      const L = [...__host.R.people.entries()].filter(([id, a]) => !['M', 'P', 'K', 'Mi'].includes(id) && !a.sitting).map(([id, a]) => [id, a.x, a.z]), out = [];
+      for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) { const d = Math.hypot(L[i][1] - L[j][1], L[i][2] - L[j][2]); if (d < .55) out.push(`${L[i][0]}/${L[j][0]} ${d.toFixed(2)} m`); }
+      return out;
+    });
+    if (bad.length) throw new Error(bad.slice(0, 3).join(', '));
+  });
   await check('partie complète jusqu’au résultat final sans blocage', async () => {
     for (let i = 0; i < 40; i++) {
       const s = await host.evaluate(() => ({ k: __host.cur().k }));

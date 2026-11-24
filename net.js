@@ -1,6 +1,6 @@
 /* Couche réseau : Firebase Realtime Database si configuré, sinon mode local
    (même navigateur, plusieurs onglets) pour répéter avec des joueurs fictifs. */
-import { FIREBASE } from './config.js?v=16';
+import { FIREBASE } from './config.js?v=17';
 
 export async function connect(room) {
   if (FIREBASE) {
@@ -29,8 +29,10 @@ async function firebase(room) {
     answer: (key, pid, v) => d.set(R(`answers/${key}/${pid}`), { v, t: d.serverTimestamp() }),
     onAnswers: (key, cb) => on('answers/' + key, v => cb(v || {})),
     clearAnswers: () => d.remove(R('answers')),
-    setPos: m => d.set(R('pos'), m),
-    onPos: cb => on('pos', v => cb(v || {})),
+    setSnap: m => d.set(R('snap'), m),
+    onSnap: cb => on('snap', cb),
+    setWorld: m => d.set(R('world'), m),
+    onWorld: cb => on('world', cb),
     clearRoom: () => d.remove(d.ref(db, 'rooms/' + room))
   };
 }
@@ -83,8 +85,10 @@ function local(room) {
     answer: (k, pid, v) => { write(`answers/${k}/${pid}`, { v, t: Date.now() }); return ping(); },
     onAnswers: (k, cb) => on('answers/' + k, v => cb(v || {})),
     clearAnswers: () => { write('answers', null); return ping(); },
-    setPos: m => { write('pos', m); return ping(); },
-    onPos: cb => on('pos', v => cb(v || {})),
+    setSnap: m => { write('snap', m); return ping(); },
+    onSnap: cb => on('snap', cb),
+    setWorld: m => { write('world', m); return ping(); },
+    onWorld: cb => on('world', cb),
     clearRoom: () => { for (const k of ls.keys()) if (k.startsWith(K)) ls.del(k); return ping(); }
   };
 }
