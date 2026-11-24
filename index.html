@@ -139,11 +139,11 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=17';
-import { connect } from './net.js?v=17';
-import { keyFor, spoken, NARR } from './voices.js?v=17';
-import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=17';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=17';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=18';
+import { connect } from './net.js?v=18';
+import { keyFor, spoken, NARR } from './voices.js?v=18';
+import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=18';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=18';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -159,13 +159,13 @@ const net = await connect(ROOM);
 net.clearAnswers && net.clearAnswers(); // anciennes réponses d'une partie précédente dans la même salle
 if (net.mode === 'local') $('mode').classList.add('on');
 
-const R = createClassroom($('stage'), { corners: GAME.corners, preload: ['louise', 'joe', 'leonard', 'ben', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
+const R = createClassroom($('stage'), { room: new URLSearchParams(location.search).get('room') === '0' ? false : undefined, corners: GAME.corners, preload: ['louise_hd', 'joe_hd', 'leonard', 'ben', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
 function fit() { R.resize(innerWidth, innerHeight); }
 fit(); addEventListener('resize', fit);
 
 /* ---------- personnages fixes ---------- */
-R.addPerson('M', { model: 'louise' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2, fast: true });
-R.addPerson('P', { model: 'joe' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2, fast: true });
+R.addPerson('M', { model: 'louise_hd' }, { x: -2.7, z: -5.3, yaw: 0, spd: 1.2, fast: true });
+R.addPerson('P', { model: 'joe_hd' }, { x: .5, z: -5.4, yaw: 0, spd: 1.2, fast: true });
 R.addPerson('K', { model: 'leonard' }, { x: 2.3, z: -4.0, yaw: Math.PI / 2 });
 R.addPerson('Mi', { model: 'ben' }, { x: 4.5, z: -4.0, yaw: -Math.PI / 2 });
 R.setVisible('K', false); R.setVisible('Mi', false);

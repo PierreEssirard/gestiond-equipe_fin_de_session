@@ -82,6 +82,10 @@ try {
   await check('équipes équilibrées', async () => { const t = await host.evaluate(() => Object.values(__host.players()).map(p => p.team ? 1 : 0).sort().join()); if (t !== '0,1') throw new Error('équipes : ' + t); });
   await check('chaque joueur reçoit une place', () => wait(host, () => Object.values(__host.players()).every(p => Number.isInteger(p.seat))));
   await check('la salle 3D s’affiche sur le téléphone', () => wait(A, () => window.__phone && document.body.classList.contains('s3d'), null, 30000));
+  await check('la salle réaliste précalculée est chargée (projecteur et téléphone)', async () => {
+    await wait(host, () => __host.R.room === true, null, 180000);
+    await wait(A, () => window.__phone && __phone.R.room === true, null, 180000);
+  });
   // dans ce test, les pages ne dessinent pas (rendu logiciel très lent) ; la synchronisation continue de tourner
   for (const p of [A, B]) await p.evaluate(() => { window.__pause = true; });
 

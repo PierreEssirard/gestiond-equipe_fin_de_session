@@ -1,0 +1,13 @@
+{
+ "gain": 1.95,
+ "skyIntensity": 1.5,
+ "envIntensity": 1,
+ "charEnv": 1.15,
+ "lightMapIntensity": 2.6778439680225334,
+ "size": 4096,
+ "samples": 64,
+ "lightmap": "room_lm.webp",
+ "lightmapMobile": "room_lm_m.webp",
+ "sky": "sky.jpg",
+ "skyMobile": "sky_m.jpg"
+}

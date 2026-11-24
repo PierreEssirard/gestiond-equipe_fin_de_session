@@ -126,6 +126,37 @@ Vérifiez les chiffres avec le livre de Meier avant la présentation. Les scores
 
 Les personnages (dossier `assets/`) sont des modèles humains de type Mixamo (Adobe), repris du dépôt public [4-Impact/inequality-simulator](https://github.com/4-Impact/inequality-simulator), puis compressés pour le web (textures 1024 px, environ 1 Mo par personnage). Les animations disponibles sont : attente, marche, déception et célébration. La position assise est calculée par le jeu.
 
+## 7 bis. Salle de classe réaliste (éclairage précalculé)
+
+La salle est modélisée dans Blender par un script (`tools/room/build_room.py`), aux mêmes cotes que le jeu :
+fenêtres avec cadres, convecteurs et store, plafond suspendu avec ossature et luminaires encastrés,
+murs en blocs de béton peints, tables en stratifié, chaises à coque, bureau en chêne, portables, cahiers,
+gourdes, sacs à dos, plantes, babillard, horloge, porte avec hublot…
+Les textures (sol en dalles de vinyle, blocs, plafond, bois, stratifié…) sont générées par `tools/room/textures.py`.
+
+Tout l'éclairage de la salle est **précalculé par lancer de rayons** (moteur Cycles de Blender) :
+lumière des plafonniers et du ciel, ombres douces, lumière qui rebondit sur les murs et le sol,
+coins plus sombres. Le résultat est débruité (OpenImageDenoise) et stocké dans une texture (`assets/room_lm.webp`).
+Seul le soleil direct reste calculé en temps réel, pour les ombres mobiles des personnages.
+Les personnages sont éclairés par une capture à 360° de la salle elle-même.
+C'est plus réaliste **et** plus léger pour l'ordinateur que l'ancien éclairage (9 lampes en temps réel + occlusion).
+
+- Si la salle réaliste ne se charge pas, le jeu affiche automatiquement l'ancienne salle simplifiée.
+- Pour forcer la salle simplifiée sur un ordinateur faible : ajoutez `&room=0` à l'adresse
+  (exemple : `index.html?room=0`).
+- Les téléphones reçoivent une version allégée (`room_m.glb`, textures réduites, éclairage en 2048 px).
+
+Pour régénérer la salle (environ 45 minutes de calcul sur 2 cœurs) :
+```bash
+python3.11 -m venv venv && venv/bin/pip install bpy pillow numpy      # Blender 5 en module Python
+python3 tools/room/textures.py tex                                     # textures
+python3 tools/room/sky.py <faces_Park2> sky 90                         # panorama extérieur
+venv/bin/python tools/room/build_room.py --tex tex --sky sky --out out --lm 4096 --samples 64
+python3 tools/room/package.py out sky assets                           # compression pour le web
+```
+
+**Crédits** : vue extérieure « Park2 » d'Emil Persson ([Humus](https://www.humus.name), licence CC BY 3.0).
+
 ## 8. Après la présentation
 
 Dans la console Firebase, supprimez le nœud `rooms` ou remettez les règles à `".read": false, ".write": false`. Les règles fournies laissent n'importe qui écrire dans `rooms` : c'est pratique pour un événement de classe, pas pour un usage permanent.
