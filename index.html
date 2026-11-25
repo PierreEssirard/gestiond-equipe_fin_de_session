@@ -486,13 +486,14 @@ const DBURL = FIREBASE && FIREBASE.databaseURL ? FIREBASE.databaseURL.replace(/\
 const clipURL = new Map();
 async function dbClip(key) {
   if (clipURL.has(key)) return clipURL.get(key);
-  const p = fetch(`${DBURL}/voix/${key}.json`).then(r => r.json()).then(b => { if (!b) return null; const bin = atob(b), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return URL.createObjectURL(new Blob([u], { type: 'audio/mpeg' })); }).catch(() => null);
+  /* décodage base64 par le navigateur (pas de boucle JavaScript : rien ne bloque l'image) */
+  const p = fetch(`${DBURL}/voix/${key}.json`).then(r => r.json()).then(b => b ? fetch('data:audio/mpeg;base64,' + b).then(r => r.blob()).then(bl => URL.createObjectURL(new Blob([bl], { type: 'audio/mpeg' }))) : null).catch(() => null);
   clipURL.set(key, p); return p;
 }
 let VOIX_DB = new Set();
 const voixReady = Promise.all([
   fetch('voix/index.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : []).then(a => { VOIX = new Set(a); }).catch(() => { }),
-  DBURL ? fetch(DBURL + '/voix.json?shallow=true').then(r => r.json()).then(o => { VOIX_DB = new Set(Object.keys(o || {})); (async () => { for (const k of VOIX_DB) await dbClip(k); })(); }).catch(() => { }) : null
+  DBURL ? fetch(DBURL + '/voix.json?shallow=true').then(r => r.json()).then(o => { VOIX_DB = new Set(Object.keys(o || {})); R.ready.then(async () => { for (const k of VOIX_DB) await dbClip(k); }); }).catch(() => { }) : null   // la 3D d'abord, les voix ensuite
 ]);
 async function speakP(text, who, loud) {
   const tok = sayTok;

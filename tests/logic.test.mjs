@@ -241,7 +241,7 @@ test('répliques : expressions de Philippe garanties à chaque partie, réserves
 });
 test('prononciation : « CréH » se dit « cré » puis H, le cri n’est pas épelé', () => {
   assert.equal(spoken2('CréH, arrête'), 'Cré-ache, arrête');
-  assert.match(spoken2('YOUHOUUUUU !'), /^Youhou+ !$/);
+  assert.equal(spoken2('YOUHOUUUUU !'), 'Youhouuuuuuuuuu !!!');
 });
 test('instantanés : le saut et le rire passent aux téléphones', () => {
   const q = unpackPerson(packPerson({ x: 1, z: 2, yaw: 0, jump: true, react: 'laugh' }));

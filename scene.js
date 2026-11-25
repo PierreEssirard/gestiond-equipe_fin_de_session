@@ -641,7 +641,7 @@ export function createClassroom(canvas, opts = {}) {
     if (!LITE) { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
     zoneMeshes.forEach(m => { if (m.userData.hi) { const s = 1 + Math.sin(T * 5) * .05; m.scale.set(s, s, 1); } else m.scale.set(1, 1, 1); });
     flagM.rotation.y = Math.sin(T * 3) * .15;
-    if (++frameN % (LITE ? 3 : 2) === 0 || frameN < 4) renderer.shadowMap.needsUpdate = true;
+    ++frameN; if (!LITE) renderer.shadowMap.needsUpdate = true;   // ombres à chaque image : même coût d'une image à l'autre (pas d'à-coups)
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
   }
   /* qualité adaptative : baisse la résolution interne puis les effets si l'ordinateur peine,

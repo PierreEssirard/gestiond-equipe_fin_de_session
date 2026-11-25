@@ -11,7 +11,7 @@ export function keyFor(who, text) {
 /* Texte envoyé à la synthèse (sans guillemets typographiques, montants lisibles). */
 export const spoken = t => t.replace(/[«»]/g, '').replace(/(\d+(?:,\d+)?) ?G\$/g, '$1 milliards de dollars')
   .replace(/CréH/g, 'Cré-ache')                                         // prénom : « cré » puis la lettre H
-  .replace(/\bYOUHOU(U*)/g, (m, u) => 'Youhou' + 'u'.repeat(u.length))  // un cri, pas des lettres épelées
+  .replace(/\bYOUHOU+ *!*/g, 'Youhouuuuuuuuuu !!!')                     // un long cri (1,8 s), pas des lettres épelées
   .replace(/\s+/g, ' ').trim();
 
 export const NARR = {

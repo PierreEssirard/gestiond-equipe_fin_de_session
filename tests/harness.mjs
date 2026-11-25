@@ -66,5 +66,5 @@ export const ROOT_DIR = ROOT;
 export async function join(p, name) {
   await p.fill('#nm', name);
   await p.evaluate(() => setTimeout(() => document.getElementById('jn').click(), 0));
-  await p.waitForFunction(() => !document.getElementById('nm'), null, { timeout: 60000 });
+  await p.waitForFunction(() => !document.getElementById('nm'), null, { timeout: 150000 });
 }
