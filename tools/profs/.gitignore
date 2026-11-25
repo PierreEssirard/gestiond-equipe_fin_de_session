@@ -1,0 +1,6 @@
+photos/
+src/
+out/
+spec_*.json
+*_geo.json
+node_modules

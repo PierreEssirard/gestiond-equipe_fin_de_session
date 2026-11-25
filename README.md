@@ -126,6 +126,16 @@ Vérifiez les chiffres avec le livre de Meier avant la présentation. Les scores
 
 Les personnages (dossier `assets/`) sont des modèles humains de type Mixamo (Adobe), repris du dépôt public [4-Impact/inequality-simulator](https://github.com/4-Impact/inequality-simulator), puis compressés pour le web (textures 1024 px, environ 1 Mo par personnage). Les animations disponibles sont : attente, marche, déception et célébration. La position assise est calculée par le jeu.
 
+### Avatars des profs (ressemblance)
+
+Philippe et Mélanie ont leur propre visage : la photo est projetée sur la tête 3D depuis une caméra
+ajustée sur des repères (yeux, nez, bouche, menton), puis le teint du visage, du cou et des mains est harmonisé.
+Philippe : cheveux bruns poivre et sel, veste anthracite, chemise sombre à motifs, sans cravate.
+Mélanie : cheveux blonds mi-longs avec raie (mèches générées autour du crâne), chemisier blanc,
+perles d'oreilles et collier. Les outils sont dans `tools/profs/` (les photos ne sont pas dans le dépôt :
+les placer dans `tools/profs/photos/` pour régénérer). Projecteur : `joe_hd.glb`, `louise_hd.glb` ;
+téléphones : `joe.glb`, `louise.glb` (textures 1024 px, cheveux allégés).
+
 ## 7 bis. Salle de classe réaliste (éclairage précalculé)
 
 La salle est modélisée dans Blender par un script (`tools/room/build_room.py`), aux mêmes cotes que le jeu :

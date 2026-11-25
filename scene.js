@@ -291,8 +291,9 @@ export function createClassroom(canvas, opts = {}) {
   const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
   const base = opts.assets || './assets/';
   const modelCache = {}, clips = {}; let charEnv = .35;
-  const loadModel = name => modelCache[name] || (modelCache[name] = loader.loadAsync(base + name + '.glb').then(g => {
-    g.scene.traverse(n => { if (n.isMesh) { const ms = Array.isArray(n.material) ? n.material : [n.material]; ms.forEach(m => { m.metalness = 0; m.metalnessMap = null; m.roughnessMap = null; m.roughness = /hair|eye|lash/i.test(m.name) ? .55 : .78; m.envMapIntensity = charEnv; if (/lash|hair/i.test(m.name)) { m.alphaTest = .4; m.transparent = false; m.depthWrite = true; } m.needsUpdate = true; }); } });
+  const loadModel = name => modelCache[name] || (modelCache[name] = loader.loadAsync(base + name + '.glb' + BUST).then(g => {
+    g.scene.traverse(n => { if (n.isMesh) { const ms = Array.isArray(n.material) ? n.material : [n.material]; ms.forEach(m => { if (/^acc_/.test(m.name)) return;   /* bijoux : matériaux d'origine (nacre, argent) */
+      m.metalness = 0; m.metalnessMap = null; m.roughnessMap = null; m.roughness = /hair|eye|lash/i.test(m.name) ? .55 : .78; m.envMapIntensity = charEnv; if (/lash|hair/i.test(m.name)) { m.alphaTest = .4; m.transparent = false; m.depthWrite = true; } m.needsUpdate = true; }); } });
     return g;
   }));
   const ANIMS = { idle: 'anim_idle', walk: 'anim_walking', sad: 'anim_sad_idle', cheer: 'anim_celebrating' };
@@ -308,7 +309,7 @@ export function createClassroom(canvas, opts = {}) {
      précalculé dans une texture ; seul le soleil direct reste en temps réel (ombres des personnages).
      En cas d'échec de chargement, le décor procédural reste affiché : le jeu fonctionne toujours. */
   let roomOn = false, useAO = true, roomSunBaked = false;
-  const BUST = '?v=19';                                   // nouvelle version des fichiers : pas de mélange avec un cache ancien
+  const BUST = '?v=20';                                   // nouvelle version des fichiers : pas de mélange avec un cache ancien
   const ROOMURL = opts.room === false ? null : (opts.room || base + (LITE ? 'room_m.glb' : 'room.glb'));
   const killIBLDiffuse = THREE.ShaderChunk.lights_fragment_maps.replace('iblIrradiance += getIBLIrradiance( geometryNormal );', '');
   const NODIRECT = '#include <lights_fragment_end>\n\treflectedLight.directDiffuse = vec3( 0. ); reflectedLight.directSpecular = vec3( 0. );';

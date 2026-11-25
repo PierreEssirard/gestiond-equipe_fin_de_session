@@ -1,0 +1,17 @@
+<!DOCTYPE html><html><body><script type="importmap">{"imports":{"three":"/vendor/node_modules/three/build/three.module.js","three/addons/":"/vendor/node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+const f=new URLSearchParams(location.search).get('f');
+const L=new GLTFLoader();L.setMeshoptDecoder(MeshoptDecoder);
+const g=await L.loadAsync(f); const o=g.scene; o.updateMatrixWorld(true);
+const out={meshes:[],bones:{}};
+o.traverse(n=>{ if(n.isBone && /^(Head|Neck|Spine2|HeadTop_End|LeftEye|RightEye)$/.test(n.name)) out.bones[n.name]=n.matrixWorld.toArray();
+ if(n.isSkinnedMesh){ const G=n.geometry, P=G.attributes.position, U=G.attributes.uv, N=P.count, pos=new Float32Array(N*3), v=new THREE.Vector3();
+   for(let i=0;i<N;i++){ v.fromBufferAttribute(P,i); n.applyBoneTransform(i,v); v.applyMatrix4(n.matrixWorld); pos[i*3]=v.x;pos[i*3+1]=v.y;pos[i*3+2]=v.z; }
+   const uv=new Float32Array(N*2); for(let i=0;i<N;i++){uv[i*2]=U.getX(i);uv[i*2+1]=U.getY(i);}
+   const sw=G.attributes.skinWeight, si=G.attributes.skinIndex, hb=n.skeleton.bones.findIndex(b=>b.name==='Head'); let headW=new Float32Array(N); for(let i=0;i<N;i++){ for(let k=0;k<4;k++) if(si.getComponent(i,k)===hb) headW[i]+=sw.getComponent(i,k); }
+   out.meshes.push({name:n.name, mat:n.material.name, pos:Array.from(pos), uv:Array.from(uv), idx:Array.from(G.index.array), headW:Array.from(headW)}); }});
+window.out=JSON.stringify(out); window.ready=1;
+</script></body></html>
