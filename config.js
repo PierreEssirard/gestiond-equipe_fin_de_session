@@ -97,9 +97,9 @@ export const GAME = {
 export const ELEVEN = {
   model: 'eleven_multilingual_v2',
   voices: {
-    N: 'JBFqnCBsd6RMkjVDRZzb',  // narrateur (George, voix posée de conteur)
-    M: 'EXAVITQu4vr4xnSDxMaL',  // Mélanie Cloutier (Sarah)
-    P: 'IKne3meq5aSn9XLyUdCD',  // Philippe Joly (Charlie, ton décontracté)
+    N: '3hviE7nONcivv0HJiYKo',  // narrateur : voix conçue, français standard sans accent (Voice Design)
+    M: 'By8JYBR318pkS66woKw6',  // Mélanie Cloutier : voix conçue, français standard, posée et claire
+    P: '0LdaC3Mnoysn5aLaXVz8',  // Philippe Joly : voix conçue, français standard, chaleureuse et taquine
     k: 'onwK4e9ZLuTAKqWW03F9',  // Klaus (Daniel, ton autoritaire)
     mi: 'CwhRBWXzGAHq8TQ4Fs17'  // Mike (Roger)
   },

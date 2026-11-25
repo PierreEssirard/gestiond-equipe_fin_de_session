@@ -156,6 +156,7 @@ python3 tools/room/package.py out sky assets                           # compres
 ```
 
 **Crédits** : vue extérieure « Park2 » d'Emil Persson ([Humus](https://www.humus.name), licence CC BY 3.0).
+Voix générées avec [ElevenLabs](https://elevenlabs.io) (narrateur, Mélanie et Philippe : voix conçues avec Voice Design, français standard).
 
 ## 8. Après la présentation
 
