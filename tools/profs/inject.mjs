@@ -36,6 +36,15 @@ for (const a of spec.attach || []) {
   bone.addChild(node);
 }
 for (const [b, sc] of Object.entries(spec.boneScale || {})) { const node = root.listNodes().find(x => x.getName() === b); const s0 = node.getScale(); node.setScale([s0[0] * sc[0], s0[1] * sc[1], s0[2] * sc[2]]); }
+for (const [n, col] of Object.entries(spec.vcolor || {})) {        // couleurs par sommet sur un maillage existant
+  const node = root.listNodes().find(x => x.getName() === n), prim = node.getMesh().listPrimitives()[0];
+  prim.setAttribute('COLOR_0', doc.createAccessor().setArray(new Float32Array(col)).setType('VEC4').setBuffer(buf));
+}
+for (const [n, keep] of Object.entries(spec.cut || {})) {          // triangles gardés (les autres sont retirés)
+  const node = root.listNodes().find(x => x.getName() === n), prim = node.getMesh().listPrimitives()[0], ix = prim.getIndices().getArray(), out = new Uint32Array(keep.length * 3);
+  keep.forEach((t, k) => { out[k * 3] = ix[t * 3]; out[k * 3 + 1] = ix[t * 3 + 1]; out[k * 3 + 2] = ix[t * 3 + 2]; });
+  prim.setIndices(doc.createAccessor().setArray(out).setType('SCALAR').setBuffer(buf));
+}
 for (const n of spec.hide || []) { const node = root.listNodes().find(x => x.getName() === n); if (node) node.setMesh(null); }
 await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
 if (spec.maxTex) await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [spec.maxTex, spec.maxTex], quality: 85 }));

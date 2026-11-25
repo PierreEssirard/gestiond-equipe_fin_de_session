@@ -24,16 +24,18 @@ def skull_radius(V, C, nth=96, nal=48):
         return G[ai, ti]
     return R
 
-def long_hair(V, C, uvbox, ncard=44, nrow=30, layers=((0.0, 0.0), (.005, .37), (.010, .71)), seed=5, tilt=.5,
+def long_hair(V, C, uvbox, ncard=44, nrow=30, layers=((0.0, 0.0), (.005, .37), (.010, .71)), seed=5, tilt=.5, side=0.0, roots=.7,
               open_alpha=lambda th, al: 1.0, al_top=np.pi / 2 - .22, y_end=lambda th: 1.42, al_min=-.42, off=lambda al: .012, flare=.03, n_h=10):
     """mèches qui partent de la raie (pôle incliné vers le front) et tombent sur les côtés et dans le dos"""
     R = skull_radius(V, C); rng = np.random.default_rng(seed); u0, v0, u1, v1 = uvbox
     ct, st = np.cos(tilt), np.sin(tilt)
     def world_dir(th, al):   # repère local (pôle = vertical) incliné vers l'avant d'un angle tilt autour de x
         d = np.array([np.sin(th) * np.cos(al), np.sin(al), -np.cos(th) * np.cos(al)])
-        return np.array([d[0], ct * d[1] + st * d[2], -st * d[1] + ct * d[2]])
+        e = np.array([d[0], ct * d[1] + st * d[2], -st * d[1] + ct * d[2]])
+        cs, sn = np.cos(side), np.sin(side)          # raie décalée sur le côté (rotation autour de l'axe avant-arrière)
+        return np.array([cs * e[0] - sn * e[1], sn * e[0] + cs * e[1], e[2]])
     def angles(d): return np.arctan2(d[0], -d[2]), np.arcsin(np.clip(d[1], -1, 1))
-    P, N, UV, I, A_ = [], [], [], [], []
+    P, N, UV, I, A_, RT = [], [], [], [], [], []
     dth = 2 * np.pi / ncard
     for li, (lo, ush) in enumerate(layers):
         for c in range(ncard):
@@ -63,14 +65,14 @@ def long_hair(V, C, uvbox, ncard=44, nrow=30, layers=((0.0, 0.0), (.005, .37), (
             base = len(P)
             for a in range(4):
                 for j in range(nr):
-                    A_.append(alpha[a, j]); P.append(cols[a, j]); dd = cols[a, j] - C; dd[1] *= .3; N.append(dd / (np.linalg.norm(dd) + 1e-9))
+                    A_.append(alpha[a, j]); RT.append(roots + (1 - roots) * min(1, seg[j] / .35) ** .8); P.append(cols[a, j]); dd = cols[a, j] - C; dd[1] *= .3; N.append(dd / (np.linalg.norm(dd) + 1e-9))
                     ua = u0 + (u1 - u0) * ((c * .37 + ush) % .55); UV.append([ua + (u1 - u0) * .45 * a / 3, v0 + (v1 - v0) * seg[j]])
             for a in range(3):
                 for j in range(nr - 1):
                     if not keep[j]: continue
                     p = base + a * nr + j; q = base + (a + 1) * nr + j
                     I += [[p, q, p + 1], [q, q + 1, p + 1]]
-    return np.array(P), np.array(N), np.array(UV), np.array(I), np.array(A_)
+    return np.array(P), np.array(N), np.array(UV), np.array(I), np.array(A_), np.array(RT)
 
 def sphere(c, r, n=10, m=14):
     P, N, I = [], [], []

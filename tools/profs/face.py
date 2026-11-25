@@ -36,12 +36,12 @@ def surf_point(P, T, x, y):
     if not near.any(): near = dd < dd.min() + .002
     k = np.argmax(np.where(near, Q[:, 2], -9)); return np.array([x, y, Q[k, 2]])
 
-def fit_camera(X3, x2, w):
+def fit_camera(X3, x2, w, aniso=False):
     def proj(p, X):
-        R = Rotation.from_rotvec(p[:3]).as_matrix(); Y = X @ R.T
-        return np.c_[p[3] * Y[:, 0] + p[4], -p[3] * Y[:, 1] + p[5]]
-    s0 = (x2[1, 0] - x2[0, 0]) / (X3[1, 0] - X3[0, 0])
-    p0 = np.array([0, 0, 0, s0, x2[:, 0].mean() - s0 * X3[:, 0].mean(), x2[:, 1].mean() + s0 * X3[:, 1].mean()])
+        R = Rotation.from_rotvec(p[:3]).as_matrix(); Y = X @ R.T; sy = p[6] if aniso else p[3]
+        return np.c_[p[3] * Y[:, 0] + p[4], -sy * Y[:, 1] + p[5]]
+    s0 = (x2[:, 0].max() - x2[:, 0].min()) / (X3[:, 0].max() - X3[:, 0].min())
+    p0 = np.array([0, 0, 0, s0, x2[:, 0].mean() - s0 * X3[:, 0].mean(), x2[:, 1].mean() + s0 * X3[:, 1].mean()] + ([s0] if aniso else []))
     r = least_squares(lambda p: ((proj(p, X3) - x2) * w[:, None]).ravel(), p0)
     err = np.linalg.norm(proj(r.x, X3) - x2, axis=1)
     return (lambda X: proj(r.x, X)), Rotation.from_rotvec(r.x[:3]).as_matrix(), err
@@ -71,9 +71,16 @@ def bilinear(img, x, y):
 
 def run(cfg):
     P, N, UV, T = load_head(cfg['geo'])
-    lm = cfg['model']; X3 = np.array([surf_point(P, T, *lm[k]) for k in cfg['keys']]); x2 = np.array([cfg['photo'][k] for k in cfg['keys']], float)
-    w = np.array([cfg.get('weights', {}).get(k, 1.0) for k in cfg['keys']])
-    project, R, err = fit_camera(X3, x2, w); print('erreur des repères (px photo) :', dict(zip(cfg['keys'], np.round(err, 1))))
+    if cfg.get('lm3'):          # repères 3D du visage remodelé + repères de la photo (relevés fins)
+        L3 = json.load(open(cfg['lm3'])); PH = json.load(open(cfg['photo_lm'])); keys = [k for k in L3 if k in PH and k not in cfg.get('skip', [])]
+        X3 = np.array([L3[k] for k in keys]); x2 = np.array([PH[k] for k in keys], float)
+        w = np.array([cfg.get('weights', {}).get(k, 1.0) for k in keys])
+        project, R, err = fit_camera(X3, x2, w, aniso=True)
+    else:
+        keys = cfg['keys']; lm = cfg['model']; X3 = np.array([surf_point(P, T, *lm[k]) for k in keys]); x2 = np.array([cfg['photo'][k] for k in keys], float)
+        w = np.array([cfg.get('weights', {}).get(k, 1.0) for k in keys])
+        project, R, err = fit_camera(X3, x2, w)
+    print('erreur des repères (px photo) :', dict(zip(keys, np.round(err, 1))))
     photo = np.asarray(Image.open(cfg['img']).convert('RGB'), np.float32) / 255
     Hh, Wp = photo.shape[:2]
     mask = Image.new('L', (Wp, Hh), 0); ImageDraw.Draw(mask).polygon([tuple(p) for p in cfg['poly']], fill=255)

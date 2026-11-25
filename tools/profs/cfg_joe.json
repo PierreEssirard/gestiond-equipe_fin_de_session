@@ -1,6 +1,6 @@
 {
- "geo": "joe_geo.json",
- "img": "photos/philippe.png",
+ "geo": "joe_geo_m.json",
+ "img": "/mnt/user-data/uploads/710f3ba4-image.png",
  "tex": "joe_hd_Ch33_1001_Diffuse.png",
  "normal": "joe_hd_Ch33_1001_Normal.png",
  "out": "out/joe_diffuse.png",
@@ -75,9 +75,19 @@
   ]
  },
  "weights": {
-  "mouth": 0.5,
-  "sideR": 0.7,
-  "sideL": 0.7
+  "eR": 0.5,
+  "eL": 0.5,
+  "nR": 0.5,
+  "nL": 0.5,
+  "mR": 0.5,
+  "mL": 0.5,
+  "jR": 0.5,
+  "jL": 0.5,
+  "cR": 0.5,
+  "cL": 0.5,
+  "mouthR": 0.5,
+  "mouthL": 0.5,
+  "lipTop": 0.5
  },
  "poly": [
   [
@@ -169,5 +179,10 @@
    50.0
   ]
  ],
- "feather": 0.25
+ "feather": 0.25,
+ "lm3": "lm3_joe.json",
+ "photo_lm": "lm_ph_photo.json",
+ "skip": [
+  "lipBot"
+ ]
 }

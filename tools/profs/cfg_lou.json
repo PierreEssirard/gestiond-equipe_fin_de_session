@@ -1,6 +1,6 @@
 {
- "geo": "louise_geo.json",
- "img": "photos/melanie.png",
+ "geo": "louise_geo_m.json",
+ "img": "/mnt/user-data/uploads/d1c27e0f-image.png",
  "tex": "louise_hd_Ch07_1001_Diffuse.png",
  "normal": "louise_hd_Ch07_1001_Normal.png",
  "out": "out/lou_diffuse.png",
@@ -75,9 +75,19 @@
   ]
  },
  "weights": {
-  "mouth": 0.5,
-  "sideR": 0.7,
-  "sideL": 0.7
+  "eR": 0.5,
+  "eL": 0.5,
+  "nR": 0.5,
+  "nL": 0.5,
+  "mR": 0.5,
+  "mL": 0.5,
+  "jR": 0.5,
+  "jL": 0.5,
+  "cR": 0.5,
+  "cL": 0.5,
+  "mouthR": 0.5,
+  "mouthL": 0.5,
+  "lipTop": 0.5
  },
  "poly": [
   [
@@ -171,5 +181,10 @@
  ],
  "feather": 0.25,
  "tone": 0.45,
- "expo": 0.85
+ "expo": 0.85,
+ "lm3": "lm3_lou.json",
+ "photo_lm": "lm_me_photo.json",
+ "skip": [
+  "lipBot"
+ ]
 }
