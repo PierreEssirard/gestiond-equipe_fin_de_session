@@ -49,3 +49,9 @@ def iris(tex, box, rgb, amt=.7):
     tex[y0:y1, x0:x1] = sub * (1 - m) + np.clip(tint, 0, 1) * m; return tex
 def save(a, f): Image.fromarray((np.clip(a, 0, 1) * 255 + .5).astype(np.uint8)).save(f)
 def load(f): return np.asarray(Image.open(f), np.float32) / 255
+
+def sclera(tex, box, gain=1.12):
+    """blanc des yeux plus lumineux : regard plus net"""
+    x0, y0, x1, y1 = box; sub = tex[y0:y1, x0:x1]; L = sub @ lumw; sat = sub.max(-1) - sub.min(-1)
+    m = np.clip((L - .45) / .2, 0, 1) * np.clip((.25 - sat) / .15, 0, 1)
+    tex[y0:y1, x0:x1] = np.clip(sub * (1 + (gain - 1) * m[..., None]), 0, 1); return tex

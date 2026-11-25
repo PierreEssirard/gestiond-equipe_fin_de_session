@@ -69,6 +69,20 @@ def bilinear(img, x, y):
     x0 = np.floor(x).astype(int); y0 = np.floor(y).astype(int); fx = (x - x0)[..., None]; fy = (y - y0)[..., None]
     return (img[y0, x0] * (1 - fx) * (1 - fy) + img[y0, x0 + 1] * fx * (1 - fy) + img[y0 + 1, x0] * (1 - fx) * fy + img[y0 + 1, x0 + 1] * fx * fy)
 
+def enhance(photo, up=4, clahe=1.8, amount=1.0, sigma=.9, denoise=0):
+    """photo agrandie (Lanczos) puis traits renforcés : contraste local (CLAHE) et accentuation des contours"""
+    import cv2
+    im = (np.clip(photo, 0, 1) * 255).astype(np.uint8); h, w = im.shape[:2]
+    im = np.asarray(Image.fromarray(im).resize((w * up, h * up), Image.LANCZOS))
+    if denoise: im = cv2.bilateralFilter(im, 0, denoise, 1.6 * up)          # lisse la peau (bruit, compression) sans adoucir les contours
+    if clahe:
+        lab = cv2.cvtColor(im, cv2.COLOR_RGB2LAB); L0 = lab[..., 0].copy()
+        L1 = cv2.createCLAHE(clipLimit=clahe, tileGridSize=(6, 6)).apply(L0)
+        lab[..., 0] = (L0 * .45 + L1 * .55).astype(np.uint8); im = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+    f = im.astype(np.float32) / 255
+    if amount: f = f + amount * (f - cv2.GaussianBlur(f, (0, 0), sigma * up))
+    return np.clip(f, 0, 1)
+
 def run(cfg):
     P, N, UV, T = load_head(cfg['geo'])
     if cfg.get('lm3'):          # repères 3D du visage remodelé + repères de la photo (relevés fins)
@@ -90,7 +104,8 @@ def run(cfg):
     pos, nrm, cov = raster(P, N, UV, T, S)
     view = R.T @ np.array([0, 0, 1.]); facing = np.clip((nrm @ view - .25) / .35, 0, 1)
     pp = project(pos.reshape(-1, 3)).reshape(S, S, 2)
-    col = bilinear(photo, pp[..., 0], pp[..., 1]); a = bilinear(alpha_ph[..., None], pp[..., 0], pp[..., 1])[..., 0]
+    U = cfg.get('up', 4); photoU = enhance(photo, U, cfg.get('clahe', 1.8), cfg.get('sharpen', 1.0), cfg.get('sharp_sigma', .9), cfg.get('denoise', 0))
+    col = bilinear(photoU, pp[..., 0] * U + (U - 1) / 2, pp[..., 1] * U + (U - 1) / 2); a = bilinear(alpha_ph[..., None], pp[..., 0], pp[..., 1])[..., 0]
     W = np.where(cov, a * facing, 0).astype(np.float32)
     W = np.asarray(Image.fromarray((W * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(2)), np.float32) / 255 * cov
     # teint commun : cible entre le teint de la photo et celui du personnage ; visage ET reste de la peau (cou, oreilles, mains) y sont ramenés
@@ -106,10 +121,22 @@ def run(cfg):
     soft = np.clip((lum - .15) / .1, 0, 1) * skin_t
     tex = tex * (1 + (target / tm - 1)[None, None, :] * soft[..., None])
     out = tex * (1 - W[..., None]) + np.clip(col, 0, 1) * W[..., None]
+    if cfg.get('post_sharpen', .5):          # netteté finale à la résolution de la texture, sur le visage seulement
+        from scipy.ndimage import gaussian_filter
+        bl = np.stack([gaussian_filter(out[..., c], 1.6) for c in range(3)], -1)
+        out = np.clip(out + cfg.get('post_sharpen', .5) * (out - bl) * W[..., None], 0, 1)
+    proj_col = np.clip(col, 0, 1)
     Image.fromarray((out * 255 + .5).astype(np.uint8)).save(cfg['out'])
     if cfg.get('normal'):
         nm = np.asarray(Image.open(cfg['normal']).convert('RGB'), np.float32) / 255; flat = np.array([.5, .5, 1.])
         k = (W * cfg.get('flatten', .65))[..., None]; nm = nm * (1 - k) + flat * k
+        if cfg.get('relief', 0):             # relief tiré de la photo : rides, plis du sourire, paupières, contour des lèvres
+            from scipy.ndimage import gaussian_filter
+            Lp = proj_col @ np.array([.2126, .7152, .0722]); Lp = np.where(W > .02, Lp, gaussian_filter(Lp, 8))
+            hgt = gaussian_filter(Lp, cfg.get('relief_fine', 2.2)) - gaussian_filter(Lp, 9)          # détails seulement (pas l'éclairage de la photo)
+            gr, gc = np.gradient(hgt); st = cfg['relief'] * W
+            n3 = nm * 2 - 1; n3[..., 0] += -gc * st; n3[..., 1] += gr * st     # convention des cartes d'origine (OpenGL, v vers le haut)
+            n3 /= np.linalg.norm(n3, axis=-1, keepdims=True) + 1e-9; nm = n3 * .5 + .5
         Image.fromarray((nm * 255 + .5).astype(np.uint8)).save(cfg['normal_out'])
     np.save(cfg['out'] + '.w.npy', W)
     return W

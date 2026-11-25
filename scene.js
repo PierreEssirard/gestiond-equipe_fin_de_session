@@ -295,7 +295,8 @@ export function createClassroom(canvas, opts = {}) {
   let loadN = 0, loadDone = 0;
   const track = p => { loadN++; p.then(() => loadDone++, () => loadDone++); return p; };
   const loadModel = name => modelCache[name] || (modelCache[name] = track(loader.loadAsync(base + name + '.glb' + BUST)).then(g => {
-    g.scene.traverse(n => { if (n.isMesh) { const ms = Array.isArray(n.material) ? n.material : [n.material]; ms.forEach(m => { if (/^acc_/.test(m.name)) return;   /* bijoux : matériaux d'origine (nacre, argent) */
+    g.scene.traverse(n => { if (n.isMesh) { const ms = Array.isArray(n.material) ? n.material : [n.material]; ms.forEach(m => { [m.map, m.normalMap].forEach(t => { if (t) t.anisotropy = Math.min(LITE ? 4 : 8, renderer.capabilities.getMaxAnisotropy()); });   /* visages nets même de biais */
+      if (/^acc_/.test(m.name)) return;   /* bijoux : matériaux d'origine (nacre, argent) */
       m.metalness = 0; m.metalnessMap = null; m.roughnessMap = null; m.roughness = /hair|eye|lash/i.test(m.name) ? .55 : .78; m.envMapIntensity = charEnv; if (/lash|hair/i.test(m.name)) { m.alphaTest = .4; m.transparent = false; m.depthWrite = true; } m.needsUpdate = true; }); } });
     return g;
   }));

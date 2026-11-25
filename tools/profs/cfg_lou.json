@@ -186,5 +186,13 @@
  "photo_lm": "lm_me_photo.json",
  "skip": [
   "lipBot"
- ]
+ ],
+ "up": 3,
+ "clahe": 1.35,
+ "sharpen": 0.75,
+ "post_sharpen": 0.3,
+ "relief": 3.5,
+ "flatten": 0.55,
+ "relief_fine": 2.2,
+ "denoise": 14
 }

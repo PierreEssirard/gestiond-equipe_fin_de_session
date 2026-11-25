@@ -22,6 +22,7 @@ sm = uvmask(mesh(g, '_Shirt'), S); shirt = srgb2lin(pattern(S, (24, 25, 34), [(9
 L = srgb2lin(tex) @ lumw; rel = (L / (L[sm].mean() + 1e-6)) ** .6
 t = srgb2lin(tex); t[sm] = (shirt * rel[..., None])[sm]; tex = lin2srgb(np.clip(t, 0, 1))        # chemise sombre à motifs
 tex = iris(tex, (760, 0, 1120, 200), (118, 104, 62))                              # yeux noisette-vert
+tex = sclera(tex, (760, 0, 1120, 200))
 Pj, Nj, Uj, Tj = face.load_head('joe_geo_m.json'); posj, _, covj = face.raster(Pj, Nj, Uj, Tj, S); Wj = np.load('out/joe_diffuse.png.w.npy')
 fore = covj & (Wj > .8) & (posj[..., 1] > 1.665) & (posj[..., 1] < 1.69); skin = tex[fore].mean(0) if fore.any() else np.array([.69, .54, .46])
 ax_ = np.abs(posj[..., 0]); temple = covj & (posj[..., 2] > .02) & (ax_ > .02) & (ax_ < .085) & (posj[..., 1] > 1.675) & (posj[..., 1] < 1.76)
@@ -50,6 +51,7 @@ g = geo('louise_geo_m.json'); B = head_bones(g); tex = load('out/lou_diffuse.png
 tex = recolor(tex, uvmask(mesh(g, '_Suit'), S), (234, 232, 226), .75)            # chemisier blanc
 tex = recolor(tex, uvmask(mesh(g, '_Shirt'), S), (243, 242, 238), .6)
 tex = iris(tex, (680, 0, 1040, 220), (112, 86, 52))                               # yeux noisette
+tex = sclera(tex, (680, 0, 1040, 220))
 Ph, Nh, Uh, Th = face.load_head('louise_geo_m.json'); pos_h, _, cov_h = face.raster(Ph, Nh, Uh, Th, S); Wf = np.load('out/lou_diffuse.png.w.npy')
 scalp = cov_h & ((tex @ lumw) < .2) & (Wf < .02) & (pos_h[..., 1] > 1.6)
 UVBOX = (.315, .507, .459, .995)
