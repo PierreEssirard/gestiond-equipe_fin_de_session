@@ -9,5 +9,6 @@
  "lightmap": "room_lm.webp",
  "lightmapMobile": "room_lm_m.webp",
  "sky": "sky.jpg",
- "skyMobile": "sky_m.jpg"
+ "skyMobile": "sky_m.jpg",
+ "lightMapIntensityMobile": 4.679126966393668
 }

@@ -33,7 +33,7 @@ body.s3d.split main{gap:9px;padding-top:12px}
 body.s3d.split main{flex:1 1 auto;max-height:none}
 #load{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut);font-weight:600;transition:opacity .6s}
 #load.off{opacity:0;pointer-events:none}
-#chip{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:7px 14px;border-radius:99px;background:rgba(12,17,19,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font:700 15px/1.2 Barlow,sans-serif;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
+#chip{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:7px 14px;border-radius:99px;background:rgba(12,17,19,.86);font:700 15px/1.2 Barlow,sans-serif;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
 #chip:empty{opacity:0}
 #big{position:absolute;left:0;right:0;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;opacity:0;transform:translateY(12px);transition:opacity .4s,transform .4s;text-shadow:0 2px 14px rgba(0,0,0,.7)}
 #big.on{opacity:1;transform:none}
@@ -80,9 +80,9 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=18';
-import { connect } from './net.js?v=18';
-import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=18';
+import { GAME } from './config.js?v=19';
+import { connect } from './net.js?v=19';
+import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=19';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -112,7 +112,7 @@ async function start() {
   async function boot3d() {
     if (V || booting || !want3d) return; booting = true;
     try {
-      const mod = await import('./scene.js?v=18');
+      const mod = await import('./scene.js?v=19');
       V = makeView(mod);
     } catch (e) { console.warn('3D indisponible', e); want3d = false; }
     booting = false; render(); if (V) V.sync();
@@ -152,8 +152,8 @@ async function start() {
       const rt = ht - DELAY;
       while (buf.length > 2 && buf[1].t < rt - 1000) buf.shift();
       const st = sampleSnaps(buf, rt);
-      for (const [id, v] of Object.entries(st)) if (ensure(id)) R.drive(id, v);
-      for (const id of [...R.people.keys()]) if (!st[id] && !PROF[id]) R.removePerson(id);
+      for (const id in st) if (ensure(id)) R.drive(id, st[id]);
+      for (const id of R.people.keys()) if (!st[id] && !PROF[id]) R.removePerson(id);
     }
     /* caméra : toujours sur son propre joueur (de face pour voir sa réaction au résultat) */
     let curView = null;

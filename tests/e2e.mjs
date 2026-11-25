@@ -1,60 +1,9 @@
 // Test de bout en bout : un projecteur + deux téléphones dans un vrai navigateur, en mode local (sans Firebase).
 // Lancer : npm run e2e   (Chrome ou Edge installé ; sinon CHROME_PATH=/chemin/vers/chrome)
-import http from 'node:http';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright-core';
+import { check, wait, page, errors, finish } from './harness.mjs';
 import { keyFor } from '../voices.js';
 import { LINES } from '../config.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const NM = path.join(ROOT, 'node_modules');
-const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.mjs': 'application/javascript', '.json': 'application/json', '.glb': 'model/gltf-binary', '.mp3': 'audio/mpeg', '.webp': 'image/webp', '.png': 'image/png', '.css': 'text/css' };
-
-/* serveur statique ; config.js est servi avec FIREBASE = null pour forcer le mode local */
-const server = http.createServer((req, res) => {
-  const u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  const f = path.join(ROOT, u === '/' ? 'index.html' : u);
-  if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); }
-  let body = fs.readFileSync(f);
-  if (path.basename(f) === 'config.js') body = body.toString().replace(/export const FIREBASE = \{[\s\S]*?\};/, 'export const FIREBASE = null;');
-  res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' }); res.end(body);
-});
-await new Promise(r => server.listen(0, '127.0.0.1', r));
-const BASE = `http://127.0.0.1:${server.address().port}/`;
-
-function findChrome() {
-  if (process.env.CHROME_PATH) return { executablePath: process.env.CHROME_PATH };
-  for (const dir of [process.env.PLAYWRIGHT_BROWSERS_PATH, '/opt/pw-browsers'].filter(Boolean)) {
-    if (!fs.existsSync(dir)) continue;
-    for (const d of fs.readdirSync(dir).filter(d => d.startsWith('chromium-')).sort().reverse()) {
-      const p = path.join(dir, d, 'chrome-linux64', 'chrome'); if (fs.existsSync(p)) return { executablePath: p };
-    }
-  }
-  return { channel: process.platform === 'win32' ? 'msedge' : 'chrome' };
-}
-const browser = await chromium.launch({ ...findChrome(), headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
-const ctx = await browser.newContext();
-/* bibliothèques servies depuis node_modules : le test tourne sans internet */
-await ctx.route('https://cdn.jsdelivr.net/npm/three@0.160.0/**', r => { const rel = r.request().url().split('three@0.160.0/')[1]; r.fulfill({ path: path.join(NM, 'three', rel), contentType: 'application/javascript' }); });
-await ctx.route('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js', r => r.fulfill({ path: path.join(NM, 'qrcode-generator', 'qrcode.js'), contentType: 'application/javascript' }));
-await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ body: '', contentType: 'text/css' }));
-await ctx.route(/gstatic\.com\/firebasejs|firebaseio\.com|elevenlabs/, r => r.abort());
-
-const errors = [];
-let fails = 0, passes = 0;
-async function check(name, fn) {
-  try { await fn(); passes++; console.log('  ok  ', name); }
-  catch (e) { fails++; console.log('  ÉCHEC', name, '\n        ', String(e.message || e).split('\n')[0]); }
-}
-const wait = (pg, fn, arg, t = 15000) => pg.waitForFunction(fn, arg, { timeout: t });
-async function page(url, w, h, tag) {
-  const p = await ctx.newPage(); await p.setViewportSize({ width: w, height: h });
-  p.on('pageerror', e => errors.push(`${tag}: ${e.message}`));
-  p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR|404/.test(m.text())) errors.push(`${tag}: ${m.text()}`); });
-  await p.goto(BASE + url); return p;
-}
 const ROOM = 'TEST';
 const hostState = h => h.evaluate(() => ({ step: __host.S.step, phase: __host.S.phase, gid: __host.S.gid }));
 const next = async h => { await h.evaluate(() => __host.next()); await h.waitForTimeout(400); };
@@ -234,7 +183,5 @@ try {
   await check('téléphone : écran final', () => wait(A, () => /sur \d+/.test(document.getElementById('m').innerText)));
 
   await check('aucune erreur JavaScript', async () => { if (errors.length) throw new Error(errors.slice(0, 5).join(' | ')); });
-} catch (e) { fails++; console.log('  ÉCHEC (arrêt)', e.message.split('\n')[0]); if (errors.length) console.log('  erreurs :', errors.slice(0, 5).join('\n   ')); }
-await browser.close(); server.close();
-console.log(`\n${passes} réussis, ${fails} échoués`);
-process.exit(fails ? 1 : 0);
+  await finish();
+} catch (e) { await finish(e); }

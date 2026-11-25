@@ -9,6 +9,9 @@
   "scripts": {
     "test": "node --test tests/logic.test.mjs",
     "e2e": "node tests/e2e.mjs",
-    "check": "node --test tests/logic.test.mjs && node tests/e2e.mjs"
+    "e2e:jeu": "node tests/jeu.mjs",
+    "e2e:rendu": "node tests/render.mjs",
+    "voix:check": "node tests/voices-online.mjs",
+    "check": "node --test tests/logic.test.mjs && node tests/e2e.mjs && node tests/jeu.mjs && node tests/render.mjs"
   }
 }

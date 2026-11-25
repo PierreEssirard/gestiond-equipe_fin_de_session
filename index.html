@@ -18,7 +18,7 @@
 *{box-sizing:border-box;min-width:0}
 html,body{height:100%;margin:0;background:#0c1113;color:var(--ink);font:500 18px/1.4 Barlow,system-ui,sans-serif;overflow:hidden}
 #stage{position:fixed;inset:0;width:100%;height:100%;display:block}
-.glass{background:var(--glass);border:1px solid var(--edge);border-radius:14px;backdrop-filter:blur(6px)}
+.glass{background:var(--glass);border:1px solid var(--edge);border-radius:14px}
 .cond{font-family:"Barlow Condensed",Barlow,sans-serif}
 #brand{position:fixed;left:20px;top:16px;padding:8px 14px}
 #brand b{display:block;font:800 clamp(18px,1.5vw,26px)/1 "Barlow Condensed",sans-serif;letter-spacing:.01em}
@@ -139,11 +139,11 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=18';
-import { connect } from './net.js?v=18';
-import { keyFor, spoken, NARR } from './voices.js?v=18';
-import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=18';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=18';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=19';
+import { connect } from './net.js?v=19';
+import { keyFor, spoken, NARR } from './voices.js?v=19';
+import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=19';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=19';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -616,7 +616,7 @@ function frame(now) {
 }
 net.onPlayers(v => { players = v || {}; syncAvatars(); renderHUD(); if (cur().k === 'lobby') renderLobby(); });
 go(0); requestAnimationFrame(t => { last = t; frame(t); });
-window.__host = { addBots, next, go, S, R, cur, steps, players: () => players, answers: () => answers, publishSnap: () => publishSnap(performance.now(), true), reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
+window.__host = { addBots, next, go, S, R, cur, q: qq, act, steps, players: () => players, answers: () => answers, publishSnap: () => publishSnap(performance.now(), true), reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
 </script>
 </body>
 </html>

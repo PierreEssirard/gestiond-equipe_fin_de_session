@@ -144,7 +144,10 @@ C'est plus réaliste **et** plus léger pour l'ordinateur que l'ancien éclairag
 - Si la salle réaliste ne se charge pas, le jeu affiche automatiquement l'ancienne salle simplifiée.
 - Pour forcer la salle simplifiée sur un ordinateur faible : ajoutez `&room=0` à l'adresse
   (exemple : `index.html?room=0`).
-- Les téléphones reçoivent une version allégée (`room_m.glb`, textures réduites, éclairage en 2048 px).
+- Les téléphones reçoivent une version allégée (`room_m.glb`, textures réduites) et une lightmap 2048 px
+  qui contient aussi le soleil direct et ses ombres : une seule passe de rendu par image, sans carte d'ombres
+  ni post-traitement (l'étalonnage est fait dans les matériaux), et seule la résolution s'adapte si le
+  téléphone peine (jamais de recompilation, donc pas d'à-coup).
 
 Pour régénérer la salle (environ 45 minutes de calcul sur 2 cœurs) :
 ```bash
@@ -152,8 +155,12 @@ python3.11 -m venv venv && venv/bin/pip install bpy pillow numpy      # Blender 
 python3 tools/room/textures.py tex                                     # textures
 python3 tools/room/sky.py <faces_Park2> sky 90                         # panorama extérieur
 venv/bin/python tools/room/build_room.py --tex tex --sky sky --out out --lm 4096 --samples 64
-python3 tools/room/package.py out sky assets                           # compression pour le web
+venv/bin/python tools/room/build_room.py --tex tex --sky sky --out out_p --lm 2048 --pack-lm 4096 \
+    --samples 64 --sun-scale 0.5128 --check out/lm_raw.exr --bake-only      # lightmap téléphones (soleil inclus, ≈ 1 h)
+python3 tools/room/package.py out sky assets --mobile out_p             # compression pour le web
 ```
+`--sun-scale` vaut 1 / `gain` (voir `assets/room.json`) : le soleil précalculé a la même intensité que le
+soleil temps réel du projecteur. `--check` vérifie que les UV sont identiques à celles du premier calcul.
 
 **Crédits** : vue extérieure « Park2 » d'Emil Persson ([Humus](https://www.humus.name), licence CC BY 3.0).
 Voix générées avec [ElevenLabs](https://elevenlabs.io) (narrateur, Mélanie et Philippe : voix conçues avec Voice Design, français standard).
@@ -178,10 +185,19 @@ fluide, décalage de 0,15 à 0,5 s. Si le projecteur est rechargé, les téléph
 
 ```bash
 npm install          # une seule fois
-npm test             # règles du jeu, points, configuration (2 secondes)
+npm test             # règles du jeu, points, configuration, voix (2 secondes)
 npm run e2e          # vraie partie : projecteur + 2 téléphones dans Chrome/Edge (1 à 3 minutes)
-npm run check        # les deux
+npm run e2e:jeu      # partie complète jouée depuis 2 téléphones : chaque type d'activité, points, résultat final
+npm run e2e:rendu    # rendu 3D : pas d'écran noir, perte du contexte WebGL, téléphone léger, décor de secours
+npm run check        # tout ce qui précède
+npm run voix:check   # en ligne : chaque réplique a sa voix dans Firebase (lecture seule)
 ```
+
+Le test de rendu reproduit notamment le « flash noir » : un seul pixel invalide (NaN ou infini, venant
+d'une normale dégénérée ou d'un reflet trop intense) était étalé par le halo lumineux sur tout l'écran.
+Ces valeurs sont maintenant neutralisées avant le halo ; le test vérifie que l'image reste intacte.
+Il vérifie aussi qu'un redimensionnement n'efface jamais le canevas entre deux images, que l'image revient
+après une perte du contexte WebGL (pilote réinitialisé) et que le téléphone reste dans son budget de dessin.
 
 Le test de bout en bout vérifie notamment qu'après un rechargement du projecteur ou une nouvelle partie
 dans la même salle, les téléphones peuvent encore répondre (aucune réponse « fantôme » d'une partie précédente).

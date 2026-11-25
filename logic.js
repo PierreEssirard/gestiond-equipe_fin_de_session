@@ -118,19 +118,21 @@ const angLerp = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.c
    buf : instantanés {t, a:{id:[...]}} triés par t croissant. */
 export const GAP = 300;     // un mouvement ne démarre jamais plus de 300 ms avant l'instantané qui le montre
 export const TELEPORT = 3;  // au-delà de 3 m entre deux instantanés : déplacement instantané
+/* chaque instantané n'est décodé qu'une fois (appelé à chaque image sur le téléphone : pas de travail répété) */
+const dec = (s, id) => { const u = s.u || Object.defineProperty(s, 'u', { value: {}, enumerable: false }).u; return u[id] || (u[id] = unpackPerson(s.a[id])); };
 export function sampleSnaps(buf, rt) {
   const out = {};
   if (!buf || !buf.length) return out;
-  const hold = s => { for (const [id, v] of Object.entries(s.a || {})) out[id] = { ...unpackPerson(v), v: 0 }; return out; };
+  const hold = s => { for (const id in s.a || {}) out[id] = { ...dec(s, id), v: 0 }; return out; };
   if (rt <= buf[0].t) return hold(buf[0]);
   let i = buf.length - 1;
   while (i > 0 && buf[i].t > rt) i--;
   if (i === buf.length - 1) return hold(buf[i]);
   const s0 = buf[i], s1 = buf[i + 1];
-  for (const [id, v1] of Object.entries(s1.a || {})) {
-    const p1 = unpackPerson(v1), v0 = (s0.a || {})[id];
-    if (!v0) { out[id] = { ...p1, v: 0 }; continue; }
-    const p0 = unpackPerson(v0), dist = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+  for (const id in s1.a || {}) {
+    const p1 = dec(s1, id);
+    if (!s0.a || !s0.a[id]) { out[id] = { ...p1, v: 0 }; continue; }
+    const p0 = dec(s0, id), dist = Math.hypot(p1.x - p0.x, p1.z - p0.z);
     /* immobile avant : le mouvement a commencé juste avant s1 (pas d'étirement) ;
        déjà en marche : le projecteur a simplement publié moins souvent, on interpole sur tout l'intervalle */
     const t0 = p0.walking ? s0.t : Math.max(s0.t, s1.t - GAP), span = Math.max(1, s1.t - t0), k = Math.min(1, Math.max(0, (rt - t0) / span));

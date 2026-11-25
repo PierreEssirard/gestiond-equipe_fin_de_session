@@ -37,14 +37,32 @@ export function route(f, t) {
 
 export function createClassroom(canvas, opts = {}) {
   const LITE = !!opts.lite;
+  /* téléphone : une seule passe de rendu par image (ni post-traitement ni carte d'ombres) ;
+     l'étalonnage (courbe en S, saturation) est fait directement dans les matériaux */
+  if (LITE && !THREE.ShaderChunk.tonemapping_pars_fragment.includes('GRADE_LITE'))
+    THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace('vec3 CustomToneMapping( vec3 color ) { return color; }', `vec3 CustomToneMapping( vec3 color ) { /* GRADE_LITE */
+	vec3 s = pow( clamp( ACESFilmicToneMapping( color ), 0., 1. ), vec3( 1. / 2.2 ) );
+	s = mix( s, s * s * ( 3. - 2. * s ), .38 );
+	float l = dot( s, vec3( .2126, .7152, .0722 ) );
+	s = clamp( mix( vec3( l ), s, 1.16 ) + mix( vec3( -.018, .006, .03 ), vec3( .045, .016, -.03 ), smoothstep( .15, .85, l ) ), 0., 1. );
+	return pow( s, vec3( 2.2 ) );
+}`);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   const BASE_PR = Math.min(window.devicePixelRatio || 1, LITE ? 1.35 : 1.5); let rs = 1;
   renderer.setPixelRatio(BASE_PR);
   renderer.shadowMap.autoUpdate = false; let frameN = 0;
   renderer.info.autoReset = false;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
+  renderer.shadowMap.enabled = !LITE; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = LITE ? THREE.CustomToneMapping : THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  /* perte du contexte WebGL (pilote graphique réinitialisé, mémoire saturée) : three.js recrée les ressources,
+     on recalcule ce qui n'existe que sur la carte graphique (reflets, ombres) dès que le contexte revient */
+  let lost = false, restored = 0;
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; }, false);
+  canvas.addEventListener('webglcontextrestored', () => {
+    lost = false; restored++; resPending = true; renderer.shadowMap.needsUpdate = true;
+    try { if (roomOn) captureEnv(); else scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture; } catch (e) { console.warn('reflets après perte du contexte', e); }
+  }, false);
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#0c1113');
   /* décor procédural (secours) : affiché tout de suite, remplacé par la salle précalculée dès qu'elle est chargée */
   const proc = new THREE.Group(); proc.name = 'procedural'; scene.add(proc);
@@ -75,7 +93,7 @@ export function createClassroom(canvas, opts = {}) {
   const SUNP = new THREE.Vector3(-16, 5.6, 7), SUNT = new THREE.Vector3(0, 0, 0.5);
   const sun = new THREE.DirectionalLight('#ffc27a', 5.2);
   sun.position.copy(SUNP); sun.target.position.copy(SUNT); scene.add(sun, sun.target);
-  sun.castShadow = true; sun.shadow.mapSize.set(LITE ? 1024 : 2048, LITE ? 1024 : 2048);
+  sun.castShadow = !LITE; sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 11, bottom: -11, near: 2, far: 45 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   const panels = [];
@@ -289,16 +307,21 @@ export function createClassroom(canvas, opts = {}) {
      Tout l'éclairage de la salle (plafonniers, ciel, rebonds de lumière, y compris ceux du soleil) est
      précalculé dans une texture ; seul le soleil direct reste en temps réel (ombres des personnages).
      En cas d'échec de chargement, le décor procédural reste affiché : le jeu fonctionne toujours. */
-  let roomOn = false, useAO = true;
+  let roomOn = false, useAO = true, roomSunBaked = false;
+  const BUST = '?v=19';                                   // nouvelle version des fichiers : pas de mélange avec un cache ancien
   const ROOMURL = opts.room === false ? null : (opts.room || base + (LITE ? 'room_m.glb' : 'room.glb'));
   const killIBLDiffuse = THREE.ShaderChunk.lights_fragment_maps.replace('iblIrradiance += getIBLIrradiance( geometryNormal );', '');
+  const NODIRECT = '#include <lights_fragment_end>\n\treflectedLight.directDiffuse = vec3( 0. ); reflectedLight.directSpecular = vec3( 0. );';
   function installRoom(g, lm, skyT, meta) {
     lm.flipY = false; lm.channel = 1; lm.colorSpace = THREE.SRGBColorSpace; lm.anisotropy = 4; lm.needsUpdate = true;
-    const LMI = meta.lightMapIntensity * (meta.gain || 1);
+    /* téléphone : lightmap qui contient aussi le soleil direct et ses ombres (pas de carte d'ombres en temps réel) */
+    const sunBaked = LITE && !!meta.lightMapIntensityMobile;
+    const LMI = (sunBaked ? meta.lightMapIntensityMobile : meta.lightMapIntensity) * (meta.gain || 1);
     boardT.flipY = false; boardT.needsUpdate = true; scrT.flipY = false; scrT.needsUpdate = true;
     const scrMat = new THREE.MeshStandardMaterial({ map: scrT, emissive: '#ffffff', emissiveMap: scrT, emissiveIntensity: .6, roughness: .9 });
     const glassMat = new THREE.MeshPhysicalMaterial({ color: '#e8f2f6', roughness: .02, metalness: 0, transparent: true, opacity: .07, depthWrite: false, envMapIntensity: 1.6 });
-    const lit = new Set();
+    const lit = new Set(), lmMats = new Set();
+    g.scene.traverse(o => { if (o.isMesh && o.geometry.attributes.uv1) lmMats.add(o.material); });
     /* petits objets et surfaces plaquées : inutiles dans la passe d'ombre du soleil (plus léger, rendu identique) */
     const NOCAST = /^(floor|ceiling|board|cork|poster|poster2|sheet\d|clock|base|edge|laptop_s|laptop_k|books|bottle_[sbk]|phone|cup|sleeve|paper|marker_[brkg]|pot|soil|leaf|plastic_k|fabric_k|bag\d|tbar|fixture|darkglass|alu|chrome|red)$/;
     g.scene.traverse(o => {
@@ -308,12 +331,16 @@ export function createClassroom(canvas, opts = {}) {
       if (n === 'screen') { o.material = scrMat; o.castShadow = false; return; }
       if (n === 'glass') { o.material = glassMat; o.castShadow = false; o.renderOrder = 2; return; }
       if (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0 && m.emissiveIntensity > 0) { o.castShadow = false; m.toneMapped = true; return; }
-      if (!o.geometry.attributes.uv1) return;           // pièces fines : éclairées par les reflets de la salle
+      if (LITE && m.clearcoat) { m.clearcoat = 0; m.needsUpdate = true; }   // téléphone : une couche de vernis en moins à calculer
+      if (!o.geometry.attributes.uv1) {                 // pièces fines : éclairées par les reflets de la salle
+        if (sunBaked && !lmMats.has(m) && !lit.has(m)) { lit.add(m); m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', NODIRECT); }; m.customProgramCacheKey = () => 'nodirect'; m.needsUpdate = true; }
+        return;
+      }
       if (n === 'board') m.map = boardT;
       if (lit.has(m)) return; lit.add(m);
       m.lightMap = lm; m.lightMapIntensity = LMI; m.envMapIntensity = meta.envIntensity ?? 1;
-      m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_maps>', killIBLDiffuse); };
-      m.customProgramCacheKey = () => 'lightmapped';
+      m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_maps>', killIBLDiffuse); if (sunBaked) sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', NODIRECT); };
+      m.customProgramCacheKey = () => sunBaked ? 'lightmapped-sun' : 'lightmapped';
       m.needsUpdate = true;
     });
     scene.remove(proc); proc.traverse(o => { if (o.geometry) o.geometry.dispose(); });
@@ -324,7 +351,7 @@ export function createClassroom(canvas, opts = {}) {
     scene.background = skyT; scene.backgroundIntensity = meta.skyIntensity ?? 1.5;
     useAO = false; if (gtao) gtao.enabled = false;
     charEnv = meta.charEnv ?? 1; Object.values(modelCache).forEach(p => p.then(m => m.scene.traverse(n => { if (n.isMesh) (Array.isArray(n.material) ? n.material : [n.material]).forEach(x => x.envMapIntensity = charEnv); })).catch(() => { }));
-    roomOn = true; renderer.shadowMap.needsUpdate = true;
+    roomOn = true; roomSunBaked = sunBaked; renderer.shadowMap.needsUpdate = true;
     try { captureEnv(); } catch (e) { console.warn('capture des reflets impossible, reflets génériques conservés', e); }
   }
   /* reflets et lumière ambiante des personnages : capture de la salle elle-même (cube 360° au centre) */
@@ -340,12 +367,15 @@ export function createClassroom(canvas, opts = {}) {
     if (old && old.dispose) old.dispose();
   }
   const roomReady = !ROOMURL ? Promise.resolve(false) : (async () => {
-    const meta = await fetch(base + 'room.json').then(r => { if (!r.ok) throw new Error('room.json ' + r.status); return r.json(); });
+    const meta = await fetch(base + 'room.json' + BUST, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('room.json ' + r.status); return r.json(); });
     const tl = new THREE.TextureLoader();
-    const [g, lm, skyT] = await Promise.all([loader.loadAsync(ROOMURL), tl.loadAsync(base + (LITE ? meta.lightmapMobile : meta.lightmap)), tl.loadAsync(base + (LITE ? meta.skyMobile : meta.sky))]);
+    const [g, lm, skyT] = await Promise.all([loader.loadAsync(ROOMURL), tl.loadAsync(base + (LITE ? meta.lightmapMobile : meta.lightmap) + BUST), tl.loadAsync(base + (LITE ? meta.skyMobile : meta.sky))]);
     installRoom(g, lm, skyT, meta); return true;
   })().catch(e => { console.warn('salle précalculée indisponible, décor simplifié conservé', e); return false; });
-  const ready = Promise.all([animsReady.catch(e => console.warn('animations', e)), roomReady]);
+  /* compile d'avance les shaders des éléments qui n'apparaissent qu'en cours de partie (zones, ligne, drapeau) :
+     pas d'à-coup la première fois qu'ils s'affichent */
+  function warm() { const h = []; [...zoneMeshes, lineMesh, flag].forEach(o => { if (!o.visible) { o.visible = true; h.push(o); } }); try { renderer.compile(scene, camera); } catch (e) { } h.forEach(o => o.visible = false); }
+  const ready = Promise.all([animsReady.catch(e => console.warn('animations', e)), roomReady]).then(r => { warm(); return r; });
   (opts.preload || []).forEach(n => loadModel(n).catch(() => { }));
   function labelSprite(text, color) {
     const c = document.createElement('canvas'), g = c.getContext('2d'); g.font = '700 46px Barlow, Arial';
@@ -366,7 +396,7 @@ export function createClassroom(canvas, opts = {}) {
   function addPerson(id, look, o = {}) {
     if (people.has(id)) return people.get(id);
     const root = new THREE.Group(), body = new THREE.Group(); root.add(body); scene.add(root);
-    const a = { slot: people.size & 1, fast: !!o.fast, id, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
+    const a = { slot: people.size % 3, fast: !!(o.fast || o.me), id, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
     if (o.label) { a.label = labelSprite(o.label, o.color || '#fff'); root.add(a.label); }
     if (o.me) {
       const ring = new THREE.Mesh(new THREE.RingGeometry(.36, .5, 48), new THREE.MeshBasicMaterial({ color: '#ffd34d', transparent: true, opacity: .95, depthWrite: false, side: THREE.DoubleSide }));
@@ -435,7 +465,11 @@ export function createClassroom(canvas, opts = {}) {
     if (want !== a.cur) { const n = a.actions[want], o = a.actions[a.cur]; n.reset().play(); if (o) n.crossFadeFrom(o, .35, false); a.cur = want; }
     a.actions.walk.timeScale = a.spd / 1.3;
     a.acc = (a.acc || 0) + dt;
-    if (!a.fast && !a.walking && ((frameN + a.slot) & 1)) return;
+    if (!a.fast && !a.walking) {
+      sph.center.set(a.x, .9, a.z);
+      if (!frustum.intersectsSphere(sph) && a.acc < 1) return;          // hors champ : pose mise à jour au plus 1 fois par seconde
+      if ((frameN + a.slot) % (LITE ? 3 : 2)) return;
+    }
     a.mixer.update(a.acc); a.acc = 0;
     const B = a.bones;
     if (a.sit > .01) {
@@ -478,24 +512,31 @@ export function createClassroom(canvas, opts = {}) {
     const c = renderer.domElement; return { x: (v3.x + 1) / 2 * c.clientWidth, y: (1 - v3.y) / 2 * c.clientHeight };
   }
   let composer = null, gtao = null, grade = null, bloom = null, hq = true;
-  try {
-    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: LITE ? 2 : 4 })); composer.addPass(new RenderPass(scene, camera));
-    if (!LITE) {
+  /* valeurs invalides (NaN, infini) : un seul pixel fautif (normale dégénérée, reflet trop intense) serait étalé par le halo
+     sur tout l'écran et donnerait un écran noir pendant quelques images. On les neutralise à l'entrée du halo et en sortie. */
+  const SANE = 'vec3 sane( vec3 c ) { return ( any( isnan( c ) ) || any( isinf( c ) ) ) ? vec3( 0. ) : c; }\n';
+  if (!LITE) try {
+    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(800, 450, { type: THREE.HalfFloatType, samples: BASE_PR > 1.2 ? 2 : 4 })); composer.addPass(new RenderPass(scene, camera));
+    {
     gtao = new GTAOPass(scene, camera, 800, 450); gtao.updateGtaoMaterial({ radius: .5, distanceExponent: 1.6, thickness: 1.3, scale: 1.1 }); gtao.blendIntensity = 1.0; composer.addPass(gtao);
     const gtaoSize = gtao.setSize.bind(gtao); gtao.setSize = (w, h) => gtaoSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
     const gtaoRender = gtao.render.bind(gtao); gtao.render = (...args) => { fxObjects.forEach(o => o.visible = false); people.forEach(a => a.body.visible = false); gtaoRender(...args); fxObjects.forEach(o => o.visible = true); people.forEach(a => a.body.visible = true); };
     bloom = new UnrealBloomPass(new THREE.Vector2(400, 225), .3, .55, .82); const bloomSize = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bloomSize(Math.max(2, w >> 1), Math.max(2, h >> 1)); composer.addPass(bloom);
+    const hp = bloom.materialHighPassFilter, TEX = 'vec4 texel = texture2D( tDiffuse, vUv );';
+    if (!hp.fragmentShader.includes(TEX)) throw new Error('filtre du halo inattendu');
+    hp.fragmentShader = SANE + hp.fragmentShader.replace(TEX, TEX + ' texel.rgb = min( sane( texel.rgb ), vec3( 24. ) );');
     }
     composer.addPass(new OutputPass());
     grade = new ShaderPass({
       uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(800, 450) }, sharp: { value: .55 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
       fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform vec2 res; uniform float sharp; varying vec2 vUv;
+        ${SANE}
         float rand(vec2 c){ return fract(sin(dot(c, vec2(12.9898,78.233))) * 43758.5453); }
         void main(){
           vec2 d = vUv - .5; float r2 = dot(d, d); vec2 off = d * r2 * .004; vec2 px = 1. / res;
-          vec3 c = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
-          vec3 nb = texture2D(tDiffuse, vUv + vec2(px.x, 0.)).rgb + texture2D(tDiffuse, vUv - vec2(px.x, 0.)).rgb + texture2D(tDiffuse, vUv + vec2(0., px.y)).rgb + texture2D(tDiffuse, vUv - vec2(0., px.y)).rgb;
+          vec3 c = sane(vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b));
+          vec3 nb = sane(texture2D(tDiffuse, vUv + vec2(px.x, 0.)).rgb + texture2D(tDiffuse, vUv - vec2(px.x, 0.)).rgb + texture2D(tDiffuse, vUv + vec2(0., px.y)).rgb + texture2D(tDiffuse, vUv - vec2(0., px.y)).rgb);
           c = clamp(c + (c - nb * .25) * sharp, 0., 1.);
           c = mix(c, c * c * (3. - 2. * c), .38);
           float l = dot(c, vec3(.2126, .7152, .0722));
@@ -509,12 +550,19 @@ export function createClassroom(canvas, opts = {}) {
     composer.addPass(grade);
   } catch (e) { console.warn('post-traitement indisponible', e); composer = null; }
   let VW = 800, VH = 450;
-  function applyRes() { const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } }
+  /* changer la taille du canevas l'efface : on l'applique juste avant de dessiner, jamais entre deux images (sinon écran noir) */
+  let resPending = true;
+  function applyRes() { resPending = true; }
+  function doRes() { resPending = false; const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } }
   function resize(w, h) { VW = w; VH = h; applyRes(); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
   /* fait avancer les déplacements sans dessiner (rattrapage après une pause) */
   function advance(sec) { if (!(sec > 0)) return; const n = Math.ceil(sec / .1), d = sec / n; for (let i = 0; i < n; i++) { T += d; people.forEach(a => animate(a, d)); } }
+  const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 1.3);
   function tick(dt) {
+    if (lost) return;
+    adapt(); if (resPending) doRes();
     renderer.info.reset(); T += dt;
+    frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     people.forEach(a => animate(a, dt));
     if (camKey === 'follow') {
       const a = people.get(fol.id);
@@ -538,23 +586,21 @@ export function createClassroom(canvas, opts = {}) {
     flagM.rotation.y = Math.sin(T * 3) * .15;
     if (++frameN % (LITE ? 3 : 2) === 0 || frameN < 4) renderer.shadowMap.needsUpdate = true;
     if (composer && hq) composer.render(dt); else renderer.render(scene, camera);
-    adapt();
   }
   /* qualité adaptative : baisse la résolution interne puis les effets si l'ordinateur peine,
      et annule toute baisse qui n'apporte pas de gain (écran plafonné à 30 ou 60 Hz, onglet en arrière-plan…) */
-  let fpsT0 = performance.now(), fpsN = 0, fps = 60, auto = true, last = null, capped = false;
+  let fpsT0 = performance.now(), fpsN = 0, fps = 60, auto = true, last = null, capped = false, lastL = null, cappedL = false;
   const levels = [() => { rs = 1; }, () => { rs = .85; }, () => { rs = .7; }, () => { rs = .7; if (gtao) gtao.enabled = false; }, () => { rs = .6; if (gtao) gtao.enabled = false; if (bloom) bloom.enabled = false; }];
   let lvl = 0;
   function setLevel(n) { lvl = n; if (gtao) gtao.enabled = useAO; if (bloom) bloom.enabled = true; levels[n](); applyRes(); }
   function adapt() {
-    fpsN++; const now = performance.now(); if (now - fpsT0 < 3000) return;
+    fpsN++; const now = performance.now(); if (now - fpsT0 < (LITE ? 1500 : 3000)) return;
     fps = fpsN * 1000 / (now - fpsT0); fpsN = 0; fpsT0 = now;
     if (!auto || !hq || document.hidden) return;
-    if (LITE) {
-      if (fps >= 26) return;
-      if (composer && hq) { hq = false; return; }                                   // 1) sans étalonnage
-      if (renderer.shadowMap.enabled) { renderer.shadowMap.enabled = false; sun.castShadow = false; scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); }); return; } // 2) sans ombres
-      if (rs > .6) { rs = Math.max(.6, rs - .15); applyRes(); }                    // 3) résolution réduite
+    if (LITE) {   /* téléphone : seule la résolution interne bouge (aucune recompilation, donc aucun à-coup) */
+      if (lastL) { if (fps / lastL.fps < 1.08) { rs = lastL.rs; applyRes(); cappedL = true; } lastL = null; return; }
+      if (fps < 48 && rs > .6 && !cappedL) { lastL = { fps, rs }; rs = Math.max(.6, Math.round((rs - .1) * 100) / 100); applyRes(); }
+      else if (fps > 58 && rs < 1) { cappedL = false; rs = Math.min(1, Math.round((rs + .05) * 100) / 100); applyRes(); }
       return;
     }
     if (last) { const gain = fps / last.fps; if (gain < 1.12) { setLevel(last.lvl); capped = true; } last = null; return; }
@@ -571,10 +617,12 @@ export function createClassroom(canvas, opts = {}) {
   function setQuality(high) {
     hq = high;
     rs = high ? 1 : .7; applyRes();
+    if (LITE) return;
     renderer.shadowMap.enabled = high; sun.castShadow = high;
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
   }
-  const setScale = x => { rs = x; applyRes(); };
-  const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
-  return { get room() { return roomOn; }, setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  const setScale = x => { rs = x; lastL = last = null; cappedL = capped = false; fpsN = 0; fpsT0 = performance.now(); applyRes(); };
+  const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles,
+    shadows: renderer.shadowMap.enabled, post: !!(composer && hq), pr: renderer.getPixelRatio(), lite: LITE, lost, restored, programs: renderer.info.programs ? renderer.info.programs.length : 0, textures: renderer.info.memory.textures, sunBaked: roomSunBaked });
+  return { get room() { return roomOn; }, get cams() { return Object.keys(CAMS); }, setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }

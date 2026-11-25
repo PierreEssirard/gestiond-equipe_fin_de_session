@@ -188,3 +188,30 @@ test('placement : obstacles', () => {
   assert.equal(floorOk({ x: 9, z: 0 }), false);       // hors salle
   assert.equal(floorOk({ x: 0, z: -4.5 }), true);     // devant le tableau
 });
+
+/* ---------- voix ---------- */
+import { allLines, keyFor } from '../voices.js';
+import { ELEVEN } from '../config.js';
+import { sampleSnaps as sample2, packPerson as pack2 } from '../logic.js';
+
+test('voix : chaque réplique a une voix ElevenLabs et une clé unique', () => {
+  const L = allLines(GAME, LINES), keys = new Map();
+  for (const l of L) {
+    assert.ok(ELEVEN.voices[l.who], 'voix manquante pour ' + l.who);
+    const k = keyFor(l.who, l.text);
+    if (keys.has(k)) assert.equal(keys.get(k), l.text, 'deux répliques différentes avec la même clé : ' + k);
+    keys.set(k, l.text);
+  }
+  assert.ok(L.length > 60);
+});
+
+test('instantanés : un même tampon donne toujours le même résultat (cache de décodage sans effet de bord)', () => {
+  const p = (x, z, w) => pack2({ x, z, yaw: 0, walking: w });
+  const buf = [{ t: 0, a: { a: p(0, 0, false), b: p(1, 1, false) } }, { t: 200, a: { a: p(1, 0, true), b: p(1, 1, false) } }, { t: 400, a: { a: p(2, 0, true) } }];
+  const r1 = sample2(buf, 300), r2 = sample2(buf, 300);
+  assert.deepEqual(r1, r2);
+  r1.a.x = 99; r1.b && (r1.b.x = 99);                 // modifier un résultat ne doit pas toucher les suivants
+  assert.deepEqual(sample2(buf, 300), r2);
+  assert.deepEqual(Object.keys(buf[0]), ['t', 'a']);  // le cache n'apparaît pas dans l'instantané (envoi réseau, comparaison)
+  assert.equal(sample2(buf, 500).b, undefined);       // personnage parti : plus affiché
+});

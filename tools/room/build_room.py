@@ -18,7 +18,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--tex', required=True); ap.add_argument('--sky', required=True); ap.add_argument('--out', required=True)
 ap.add_argument('--lm', type=int, default=2048); ap.add_argument('--samples', type=int, default=128)
 ap.add_argument('--preview', action='store_true'); ap.add_argument('--no-bake', action='store_true')
-ap.add_argument('--reuse', action='store_true'); ap.add_argument('--preview-samples', type=int, default=48); ap.add_argument('--cam', default='wide'); ap.add_argument('--only-preview', action='store_true')
+ap.add_argument('--reuse', action='store_true'); ap.add_argument('--sun-scale', type=float, default=0.0); ap.add_argument('--pack-lm', type=int, default=0); ap.add_argument('--check', default=''); ap.add_argument('--bake-only', action='store_true'); ap.add_argument('--preview-samples', type=int, default=48); ap.add_argument('--cam', default='wide'); ap.add_argument('--only-preview', action='store_true')
 A = ap.parse_args()
 os.makedirs(A.out, exist_ok=True)
 T0 = time.time()
@@ -559,7 +559,7 @@ def lightmap_uv():
     for k in range(len(me.polygons)): li[pi_[k]:pi_[k] + tot[k]] = k
     uv *= w[li][:, None]; lm.data.foreach_set('uv', uv.ravel())
     bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
-    pad = 3.0 / A.lm
+    pad = 3.0 / (A.pack_lm or A.lm)         # même rangement que la lightmap principale (--pack-lm 4096) : mêmes UV
     kw = dict(margin_method='FRACTION', margin=pad, shape_method=os.environ.get('LM_SHAPE', 'CONCAVE'))
     rot = os.environ.get('LM_ROT', 'CARDINAL')
     if rot == 'none': kw['rotate'] = False
@@ -577,7 +577,9 @@ def bake():
     S.render.bake.margin = 12; S.render.bake.margin_type = 'EXTEND'; S.render.bake.use_clear = True
     target(nimg); S.cycles.samples = 4
     bpy.ops.object.bake(type='NORMAL', normal_space='OBJECT', margin=12); log('normales précalculées')
-    target(img); S.cycles.samples = A.samples; sun_direct(False)
+    target(img); S.cycles.samples = A.samples
+    if A.sun_scale > 0: sun.energy = 5.2 * A.sun_scale; sun_direct(True)   # version téléphone : soleil direct précalculé aussi
+    else: sun_direct(False)
     t = time.time(); bpy.ops.object.bake(type='DIFFUSE', pass_filter={'DIRECT', 'INDIRECT'}, margin=12); log(f'lumière précalculée en {time.time() - t:.0f} s')
     for im, f in ((img, 'lm_raw.exr'), (nimg, 'lm_normal.exr')):
         im.filepath_raw = os.path.join(A.out, f); im.file_format = 'OPEN_EXR'; im.save()
@@ -662,7 +664,11 @@ if A.reuse:                     # éclairage déjà calculé : même géométrie
     lightmap_uv(); check_layout(os.path.join(A.out, 'lm_raw.exr')); export()
     if not os.path.exists(os.path.join(A.out, 'lm.png')): subprocess.run(DENOISE, check=True)
 elif not A.no_bake:
-    lightmap_uv(); bake(); export(); subprocess.run(DENOISE, check=True)
+    lightmap_uv()
+    if A.check: check_layout(A.check)        # UV identiques à celles d'un calcul existant (lightmap mobile)
+    bake()
+    if not A.bake_only: export()
+    subprocess.run(DENOISE, check=True)
 else:
     lightmap_uv(); export()
 log('terminé')
