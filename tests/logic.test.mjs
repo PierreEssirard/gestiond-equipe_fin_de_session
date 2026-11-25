@@ -215,3 +215,36 @@ test('instantanés : un même tampon donne toujours le même résultat (cache de
   assert.deepEqual(Object.keys(buf[0]), ['t', 'a']);  // le cache n'apparaît pas dans l'instantané (envoi réseau, comparaison)
   assert.equal(sample2(buf, 500).b, undefined);       // personnage parti : plus affiché
 });
+
+/* ---------- répliques des profs ---------- */
+import { spoken as spoken2 } from '../voices.js';
+test('répliques : expressions de Philippe garanties à chaque partie, réserves assez grandes pour ne rien répéter', () => {
+  const all = JSON.stringify(LINES);
+  assert.ok(!/tabarnak/i.test(all), 'tabarnak remplacé par tabarouette');
+  const count = (arr, re) => arr.filter(([, t]) => re.test(t)).length, tab = /Tabarouette/;
+  // moments toujours joués : consignes de la ligne et de la course, fin de la fusion (réussie ou ratée)
+  assert.ok(count(LINES.intro.line, tab) + count(LINES.intro.race, tab) + Math.min(count(LINES.fusionOk, tab), count(LINES.fusionKo, tab)) >= 3);
+  const nv = [...LINES.lobby, ...LINES.final].reduce((n, [w, t]) => n + (w === 'P' ? (t.match(/vilains étudiants/g) || []).length : 0), 0);
+  assert.ok(nv >= 2, 'vilains étudiants au moins 2 fois');
+  assert.equal(LINES.claude[0][0], 'P'); assert.match(LINES.claude[0][1], /CréH, arrête d’utiliser Claude/);
+  assert.equal(LINES.youhou[0][0], 'P'); assert.equal(LINES.youhou[0][2], 'youhou'); assert.match(LINES.youhou[0][1], /^YOUHOU/);
+  assert.equal(LINES.youhou[1][0], 'M'); assert.match(LINES.youhou[1][1], /^Ha ha/);
+  const nq = GAME.acts.filter(a => a.type !== 'fusion').reduce((n, a) => n + a.qs.length, 0);
+  for (const k of ['great', 'mid', 'bad']) {
+    assert.ok(LINES[k].length >= nq, `${k} : ${LINES[k].length} échanges pour ${nq} questions`);
+    assert.ok(LINES[k].some(ex => ex.some(([w, t]) => w === 'M' && /^Ha\b/.test(t))), 'Mélanie rit dans ' + k);
+  }
+  assert.ok(LINES.waiting.length >= GAME.acts.reduce((n, a) => n + a.qs.length, 0) - 2);
+  const texts = [], walk = x => { if (Array.isArray(x) && typeof x[0] === 'string' && typeof x[1] === 'string') texts.push(x[0] + '|' + x[1]); else if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === 'object') Object.values(x).forEach(walk); };
+  walk(LINES);
+  assert.equal(new Set(texts).size, texts.length, 'aucune réplique écrite deux fois');
+});
+test('prononciation : « CréH » se dit « cré » puis H, le cri n’est pas épelé', () => {
+  assert.equal(spoken2('CréH, arrête'), 'Cré-ache, arrête');
+  assert.match(spoken2('YOUHOUUUUU !'), /^Youhou+ !$/);
+});
+test('instantanés : le saut et le rire passent aux téléphones', () => {
+  const q = unpackPerson(packPerson({ x: 1, z: 2, yaw: 0, jump: true, react: 'laugh' }));
+  assert.equal(q.jump, true); assert.equal(q.react, 'laugh');
+  assert.equal(unpackPerson(packPerson({ x: 0, z: 0, yaw: 0 })).jump, false);
+});

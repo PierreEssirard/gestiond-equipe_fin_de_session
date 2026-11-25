@@ -291,13 +291,16 @@ export function createClassroom(canvas, opts = {}) {
   const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
   const base = opts.assets || './assets/';
   const modelCache = {}, clips = {}; let charEnv = .35;
-  const loadModel = name => modelCache[name] || (modelCache[name] = loader.loadAsync(base + name + '.glb' + BUST).then(g => {
+  /* progression du chargement (écran d'attente) */
+  let loadN = 0, loadDone = 0;
+  const track = p => { loadN++; p.then(() => loadDone++, () => loadDone++); return p; };
+  const loadModel = name => modelCache[name] || (modelCache[name] = track(loader.loadAsync(base + name + '.glb' + BUST)).then(g => {
     g.scene.traverse(n => { if (n.isMesh) { const ms = Array.isArray(n.material) ? n.material : [n.material]; ms.forEach(m => { if (/^acc_/.test(m.name)) return;   /* bijoux : matériaux d'origine (nacre, argent) */
       m.metalness = 0; m.metalnessMap = null; m.roughnessMap = null; m.roughness = /hair|eye|lash/i.test(m.name) ? .55 : .78; m.envMapIntensity = charEnv; if (/lash|hair/i.test(m.name)) { m.alphaTest = .4; m.transparent = false; m.depthWrite = true; } m.needsUpdate = true; }); } });
     return g;
   }));
   const ANIMS = { idle: 'anim_idle', walk: 'anim_walking', sad: 'anim_sad_idle', cheer: 'anim_celebrating' };
-  const animsReady = Promise.all(Object.entries(ANIMS).map(([k, f]) => loader.loadAsync(base + f + '.glb').then(g => {
+  const animsReady = Promise.all(Object.entries(ANIMS).map(([k, f]) => track(loader.loadAsync(base + f + '.glb')).then(g => {
     const c = g.animations[0];
     c.tracks = c.tracks.filter(t => !t.name.endsWith('.scale') && (!t.name.endsWith('.position') || t.name === 'Hips.position'));
     const hp = c.tracks.find(t => t.name === 'Hips.position');
@@ -309,7 +312,7 @@ export function createClassroom(canvas, opts = {}) {
      précalculé dans une texture ; seul le soleil direct reste en temps réel (ombres des personnages).
      En cas d'échec de chargement, le décor procédural reste affiché : le jeu fonctionne toujours. */
   let roomOn = false, useAO = true, roomSunBaked = false;
-  const BUST = '?v=20';                                   // nouvelle version des fichiers : pas de mélange avec un cache ancien
+  const BUST = '?v=21';                                   // nouvelle version des fichiers : pas de mélange avec un cache ancien
   const ROOMURL = opts.room === false ? null : (opts.room || base + (LITE ? 'room_m.glb' : 'room.glb'));
   const killIBLDiffuse = THREE.ShaderChunk.lights_fragment_maps.replace('iblIrradiance += getIBLIrradiance( geometryNormal );', '');
   const NODIRECT = '#include <lights_fragment_end>\n\treflectedLight.directDiffuse = vec3( 0. ); reflectedLight.directSpecular = vec3( 0. );';
@@ -370,14 +373,41 @@ export function createClassroom(canvas, opts = {}) {
   const roomReady = !ROOMURL ? Promise.resolve(false) : (async () => {
     const meta = await fetch(base + 'room.json' + BUST, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('room.json ' + r.status); return r.json(); });
     const tl = new THREE.TextureLoader();
-    const [g, lm, skyT] = await Promise.all([loader.loadAsync(ROOMURL), tl.loadAsync(base + (LITE ? meta.lightmapMobile : meta.lightmap) + BUST), tl.loadAsync(base + (LITE ? meta.skyMobile : meta.sky))]);
+    const [g, lm, skyT] = await Promise.all([track(loader.loadAsync(ROOMURL)), track(tl.loadAsync(base + (LITE ? meta.lightmapMobile : meta.lightmap) + BUST)), track(tl.loadAsync(base + (LITE ? meta.skyMobile : meta.sky)))]);
     installRoom(g, lm, skyT, meta); return true;
   })().catch(e => { console.warn('salle précalculée indisponible, décor simplifié conservé', e); return false; });
   /* compile d'avance les shaders des éléments qui n'apparaissent qu'en cours de partie (zones, ligne, drapeau) :
      pas d'à-coup la première fois qu'ils s'affichent */
   function warm() { const h = []; [...zoneMeshes, lineMesh, flag].forEach(o => { if (!o.visible) { o.visible = true; h.push(o); } }); try { renderer.compile(scene, camera); } catch (e) { } h.forEach(o => o.visible = false); }
-  const ready = Promise.all([animsReady.catch(e => console.warn('animations', e)), roomReady]).then(r => { warm(); return r; });
-  (opts.preload || []).forEach(n => loadModel(n).catch(() => { }));
+  /* tout est prêt quand la salle, les animations et TOUS les personnages sont chargés, leurs textures envoyées
+     à la carte graphique et leurs shaders compilés : rien ne se charge ni ne se compile ensuite pendant le jeu */
+  const modelsReady = Promise.all((opts.preload || []).map(n => loadModel(n).catch(() => null)));
+  async function warmGPU() {
+    const ms = (await Promise.all(Object.values(modelCache).map(p => p.catch(() => null)))).filter(Boolean);
+    const seen = new Set(), up = t => { if (t && t.isTexture && !seen.has(t)) { seen.add(t); try { renderer.initTexture(t); } catch (e) { } } };
+    const textures = o => o.traverse(n => { if (n.material) (Array.isArray(n.material) ? n.material : [n.material]).forEach(m => { for (const k in m) if (m[k] && m[k].isTexture) up(m[k]); }); });
+    textures(scene); ms.forEach(g => textures(g.scene));
+    const stage = new THREE.Group(), dir = new THREE.Vector3(); camera.updateMatrixWorld(); camera.getWorldDirection(dir);
+    ms.forEach((g, i) => {
+      const c = cloneSkinned(g.scene); c.traverse(n => { if (n.isMesh) { n.castShadow = !LITE; n.receiveShadow = true; n.frustumCulled = false; } });
+      c.position.copy(camera.position).addScaledVector(dir, 4).add(new THREE.Vector3((i - ms.length / 2) * .45, -1.4, 0)); stage.add(c);
+    });
+    const lab = labelSprite('·', '#fff'); stage.add(lab);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.36, .5, 8), new THREE.MeshBasicMaterial({ color: '#ffd34d', transparent: true, opacity: .95, depthWrite: false, side: THREE.DoubleSide })); stage.add(ring);
+    const dsc = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: '#fff', transparent: true, opacity: .7, depthWrite: false })); stage.add(dsc);
+    lab.position.copy(camera.position).addScaledVector(dir, 4); ring.position.copy(lab.position); dsc.position.copy(lab.position);
+    scene.add(stage);
+    try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); } catch (e) { }
+    renderer.shadowMap.needsUpdate = true;
+    try { if (composer && hq) composer.render(0); else renderer.render(scene, camera); } catch (e) { }
+    scene.remove(stage); ring.geometry.dispose();
+  }
+  let readyAt = 0, settleRes = null, settleN = 0, lastFrame = 0;
+  const settled = new Promise(r => { settleRes = r; });
+  const ready = Promise.all([animsReady.catch(e => console.warn('animations', e)), roomReady, modelsReady]).then(async r => {
+    try { await warmGPU(); } catch (e) { console.warn('préparation graphique', e); }
+    warm(); readyAt = performance.now(); setTimeout(() => { if (settleRes) { settleRes(true); settleRes = null; } }, 7000); return r;
+  });
   function labelSprite(text, color) {
     const c = document.createElement('canvas'), g = c.getContext('2d'); g.font = '700 46px Barlow, Arial';
     const w = Math.ceil(g.measureText(text).width) + 74; c.width = w; c.height = 76;
@@ -428,12 +458,13 @@ export function createClassroom(canvas, opts = {}) {
   }
   const sitAt = (id, s, delay) => moveTo(id, s.x, s.z, { after: 'sit', delay });
   function react(id, kind, sec = 2.5) { const a = people.get(id); if (a) a.react = { kind, until: T + sec }; }
+  function jump(id, sec = 2.2) { const a = people.get(id); if (a) { a.jumpT0 = T; a.jumpUntil = T + sec; } }
   function talk(id, sec) { const a = people.get(id); if (a) a.talk = T + sec; }
   function setVisible(id, v) { const a = people.get(id); if (a) a.root.visible = v; }
   function place(id, x, z, yaw) { const a = people.get(id); if (!a) return; a.x = x; a.z = z; a.path = []; if (yaw !== undefined) a.yaw = a.tyaw = yaw; a.sitting = false; a.sit = 0; }
 
   const lerp = (a, b, k) => a + (b - a) * k;
-  const qx = new THREE.Quaternion(), AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0);
+  const qx = new THREE.Quaternion(), AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
   /* marionnette : le téléphone ne simule rien, il affiche l'état publié par le projecteur */
   function drive(id, s) {
     const a = people.get(id); if (!a) return;
@@ -441,6 +472,7 @@ export function createClassroom(canvas, opts = {}) {
     a.path = []; a.delay = 0; a.x = s.x; a.z = s.z; a.yaw = a.tyaw = s.yaw;
     a.walking = !!s.walking; a.sitting = !!s.sitting;
     a.react = s.react ? { kind: s.react, until: T + .5 } : null;
+    if (s.jump) { if (!(a.jumpUntil > T)) a.jumpT0 = T; a.jumpUntil = T + .35; }
     a.talk = s.talk ? T + .5 : 0;
     a.root.visible = !s.hidden;
     if (s.v > .3) a.spd = Math.min(2.2, s.v);
@@ -455,11 +487,16 @@ export function createClassroom(canvas, opts = {}) {
     } else a.walking = false;
     if (!a.puppet) { let dy = a.tyaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); a.yaw += dy * Math.min(1, dt * 7); }
     a.sit = lerp(a.sit, a.sitting ? 1 : 0, Math.min(1, dt * 5));
-    a.root.position.set(a.x, -0.46 * a.sit, a.z); a.root.rotation.y = a.yaw;
+    let hop = 0;
+    if (a.jumpUntil > T) { const ph = T - a.jumpT0, n = Math.min(1, (a.jumpUntil - T) / .3, ph / .06); hop = Math.abs(Math.sin(ph * Math.PI / .52)) * .26 * n; }
+    a.hopY = hop;
+    a.root.position.set(a.x, -0.46 * a.sit + hop, a.z); a.root.rotation.y = a.yaw;
     if (a.label) a.label.position.y = a.arrow ? 2.55 : 1.98;
     if (a.ring) { const k = 1 + Math.sin(T * 4) * .08; a.ring.scale.set(k, k, 1); a.arrow.position.y = 2.25 - .46 * a.sit + Math.sin(T * 3) * .06; a.arrow.rotation.y = T * 1.5; if (a.label) a.label.position.y = 2.55 - .46 * a.sit; }
     if (a.disc) a.disc.position.y = .015 + .46 * a.sit;
-    if (a.blob) a.blob.position.y = .006 + .46 * a.sit;
+    if (a.blob) { a.blob.position.y = .006 + .46 * a.sit - hop; const bs = 1 - hop * 1.6; a.blob.scale.set(bs, bs, 1); }
+    if (a.disc) a.disc.position.y -= hop;
+    if (a.ring) a.ring.position.y = .02 - hop;
     if (!a.mixer) return;
     const r = a.react && a.react.until > T ? a.react.kind : null;
     const want = a.walking ? 'walk' : r === 'cheer' && a.sit < .5 ? 'cheer' : r === 'sad' ? 'sad' : 'idle';
@@ -478,6 +515,20 @@ export function createClassroom(canvas, opts = {}) {
       ['LeftUpLeg', 'RightUpLeg'].forEach(n => B[n] && B[n].quaternion.multiply(qx.setFromAxisAngle(AX, 1.45 * k)));
       ['LeftLeg', 'RightLeg'].forEach(n => B[n] && B[n].quaternion.multiply(qx.setFromAxisAngle(AX, -1.45 * k)));
       if (r === 'cheer') ['LeftArm', 'RightArm'].forEach((n, i) => B[n] && B[n].quaternion.multiply(qx.setFromAxisAngle(AX, -1.2 - Math.abs(Math.sin(T * 6 + i)) * .5)));
+    }
+    if (a.jumpUntil > T) {                    // saut de joie : bras en V au-dessus de la tête, jambes qui amortissent
+      const k = Math.min(1, (T - a.jumpT0) / .12, (a.jumpUntil - T) / .3), land = (1 - Math.min(1, hop / .07)) * k;
+      if (B.LeftArm) B.LeftArm.quaternion.multiply(qx.setFromAxisAngle(AZ, -2.5 * k));
+      if (B.RightArm) B.RightArm.quaternion.multiply(qx.setFromAxisAngle(AZ, 2.5 * k));
+      ['LeftUpLeg', 'RightUpLeg'].forEach(n => B[n] && B[n].quaternion.multiply(qx.setFromAxisAngle(AX, .4 * land)));
+      ['LeftLeg', 'RightLeg'].forEach(n => B[n] && B[n].quaternion.multiply(qx.setFromAxisAngle(AX, -.7 * land)));
+    }
+    if (r === 'laugh' && B.Head) {             // rire : tête qui bascule un peu en arrière, épaules qui sautillent
+      const s1 = Math.sin(T * 15), s2 = Math.sin(T * 7.5);
+      B.Head.quaternion.multiply(qx.setFromAxisAngle(AX, -.07 + s1 * .05));
+      if (B.Spine2) B.Spine2.quaternion.multiply(qx.setFromAxisAngle(AX, -.03 + s2 * .025));
+      if (B.LeftShoulder) B.LeftShoulder.quaternion.multiply(qx.setFromAxisAngle(AZ, s1 * .05));
+      if (B.RightShoulder) B.RightShoulder.quaternion.multiply(qx.setFromAxisAngle(AZ, -s1 * .05));
     }
     if (a.talk > T && B.Head) { B.Head.quaternion.multiply(qx.setFromAxisAngle(AX, Math.sin(T * 5.5) * .06)); B.Head.quaternion.multiply(qx.setFromAxisAngle(AY, Math.sin(T * 1.7) * .15)); if (B.RightForeArm) B.RightForeArm.quaternion.multiply(qx.setFromAxisAngle(AX, -.5 - Math.sin(T * 3.1) * .3)); }
   }
@@ -561,13 +612,18 @@ export function createClassroom(canvas, opts = {}) {
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 1.3);
   function tick(dt) {
     if (lost) return;
+    { const now = performance.now(), fdt = now - lastFrame; lastFrame = now;          // images régulières : l'écran d'attente peut disparaître
+      if (readyAt && settleRes) { settleN = fdt < 45 ? settleN + 1 : 0; if (settleN >= 12 || now - readyAt > 7000) { settleRes(true); settleRes = null; } } }
     adapt(); if (resPending) doRes();
     renderer.info.reset(); T += dt;
     frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     people.forEach(a => animate(a, dt));
     if (camKey === 'follow') {
       const a = people.get(fol.id);
-      if (a) {
+      if (a && fol.mode === 'face') {        // gros plan de face, assez large pour voir les bras levés
+        const fx = Math.sin(a.yaw), fz = Math.cos(a.yaw), d = 2.25;
+        tp.set(a.x + fx * d + fz * .25, 1.62, a.z + fz * d - fx * .25); tl.set(a.x, 1.38 + (a.hopY || 0) * .6, a.z);
+      } else if (a) {
         const sy = a.sit * -.3;
         /* plusieurs angles possibles : on prend le premier qui reste dans la salle (jamais derrière un mur) */
         const C = FOLLOW[fol.mode] || FOLLOW.back, inRoom = (x, z) => x > -7.3 && x < 7.3 && z > -5.9 && z < 6.0;
@@ -578,7 +634,7 @@ export function createClassroom(canvas, opts = {}) {
     } else { const [p, l] = CAMS[camKey]; tp.set(...p); tl.set(...l); }
     if (camKey === 'lobby' || camKey === 'wide') { tp.x += Math.sin(T * .12) * .35; tp.z += Math.cos(T * .1) * .2; }
     if (snapNext) { snapNext = false; camPos.copy(tp); camLook.copy(tl); }
-    const k = 1 - Math.exp(-dt * 2.2); camPos.lerp(tp, k); camLook.lerp(tl, k);
+    const k = 1 - Math.exp(-dt * (camKey === 'follow' && fol.mode === 'face' ? 6 : 2.2)); camPos.lerp(tp, k); camLook.lerp(tl, k);
     camera.position.copy(camPos); camera.position.x += Math.sin(T * .9) * .012 + Math.sin(T * 2.3) * .004; camera.position.y += Math.sin(T * 1.3) * .01;
     camera.lookAt(camLook);
     if (grade) grade.uniforms.time.value = T;
@@ -625,5 +681,5 @@ export function createClassroom(canvas, opts = {}) {
   const setScale = x => { rs = x; lastL = last = null; cappedL = capped = false; fpsN = 0; fpsT0 = performance.now(); applyRes(); };
   const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles,
     shadows: renderer.shadowMap.enabled, post: !!(composer && hq), pr: renderer.getPixelRatio(), lite: LITE, lost, restored, programs: renderer.info.programs ? renderer.info.programs.length : 0, textures: renderer.info.memory.textures, sunBaked: roomSunBaked });
-  return { get room() { return roomOn; }, get cams() { return Object.keys(CAMS); }, setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  return { get room() { return roomOn; }, get cams() { return Object.keys(CAMS); }, get progress() { return loadN ? Math.min(1, loadDone / loadN) : 0; }, settled, jump, get view() { return { key: camKey, follow: { ...fol } }; }, setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }

@@ -66,6 +66,12 @@ Le QR code pointe automatiquement vers `player.html` à la même adresse.
 
 ## 4. Le jour de la présentation
 
+Au lancement, un écran « Chargement de la salle 3D » reste affiché tant que la salle, tous les personnages,
+leurs textures et leurs shaders ne sont pas prêts et que l'image n'est pas fluide. Cliquez ensuite sur
+**Lancer la partie** (ou Espace) : ce clic active aussi le son, sinon le navigateur coupe les voix.
+Les téléphones ont le même écran de chargement : la 3D n'apparaît qu'une fois prête.
+
+
 - Sur l'ordinateur branché au projecteur, ouvrez l'adresse GitHub Pages dans **Chrome**, puis appuyez sur **F** (plein écran).
 - Branchez le son : les profs parlent avec la synthèse vocale du navigateur. Sous Windows, une voix française du Canada (ex. *Microsoft Sylvie*) est utilisée si elle est installée (Paramètres > Heure et langue > Voix). Sinon, le jeu prend la meilleure voix française disponible.
 - Testez la veille avec deux ou trois téléphones sur le Wi-Fi de l'université.
@@ -84,6 +90,13 @@ Le QR code pointe automatiquement vers `player.html` à la même adresse.
 | F | Plein écran |
 | Q | Qualité haute / réduite (si l'ordinateur rame) |
 | N (deux fois) | Nouvelle partie (efface les joueurs et les scores) |
+
+### Répliques des profs
+
+Plus de 100 répliques, tirées sans remise : aucune ne revient pendant une partie. Philippe dit au moins
+3 fois « Tabarouette » et 2 fois « vilains étudiants », lance un « CréH, arrête d'utiliser Claude ! » pendant
+la ligne, et crie « YOUHOUUUUU » à la première bonne réponse majoritaire (gros plan, saut bras levés).
+Mélanie rit à ses blagues puis revient au contenu du cours. Le tout est vérifié par `npm run e2e:jeu`.
 
 ### Voix du narrateur et des profs (ElevenLabs)
 

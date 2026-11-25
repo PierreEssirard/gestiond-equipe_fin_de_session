@@ -9,7 +9,10 @@ export function keyFor(who, text) {
 }
 
 /* Texte envoyé à la synthèse (sans guillemets typographiques, montants lisibles). */
-export const spoken = t => t.replace(/[«»]/g, '').replace(/(\d+(?:,\d+)?) ?G\$/g, '$1 milliards de dollars').replace(/\s+/g, ' ').trim();
+export const spoken = t => t.replace(/[«»]/g, '').replace(/(\d+(?:,\d+)?) ?G\$/g, '$1 milliards de dollars')
+  .replace(/CréH/g, 'Cré-ache')                                         // prénom : « cré » puis la lettre H
+  .replace(/\bYOUHOU(U*)/g, (m, u) => 'Youhou' + 'u'.repeat(u.length))  // un cri, pas des lettres épelées
+  .replace(/\s+/g, ' ').trim();
 
 export const NARR = {
   welcome: 'Bienvenue dans Choc des cultures. Scannez le code à l’écran avec votre téléphone pour rejoindre la partie.',
@@ -37,8 +40,8 @@ export function allLines(GAME, LINES) {
   [-1, 0, 1].forEach(w => add('N', NARR.final(w, GAME.teams)));
   pairs(LINES.lobby);
   Object.values(LINES.intro).forEach(pairs);
-  ['great', 'mid', 'bad', 'none'].forEach(k => LINES[k].forEach(pairs));
-  ['raceWin', 'fusionOk', 'fusionKo', 'final'].forEach(k => pairs(LINES[k]));
+  ['lobbyMore', 'waiting', 'great', 'mid', 'bad', 'none'].forEach(k => (LINES[k] || []).forEach(pairs));
+  ['claude', 'waitFusion', 'youhou', 'raceWin', 'fusionOk', 'fusionKo', 'final'].forEach(k => pairs(LINES[k] || []));
   const seen = new Set();
   return out.filter(l => { const k = keyFor(l.who, l.text); if (seen.has(k)) return false; seen.add(k); return true; });
 }

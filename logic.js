@@ -103,15 +103,15 @@ export function winner(players) {
    Le projecteur est la seule source de vérité. Il publie l'état de chaque personnage
    (position, orientation, posture) ; les téléphones l'affichent avec un léger retard
    en interpolant entre deux instantanés : mouvement fluide et identique partout. */
-export const BIT = { sit: 1, walk: 2, cheer: 4, sad: 8, talk: 16, hidden: 32 };
+export const BIT = { sit: 1, walk: 2, cheer: 4, sad: 8, talk: 16, hidden: 32, jump: 64, laugh: 128 };
 export function packPerson(p) {
-  const b = (p.sitting ? BIT.sit : 0) | (p.walking ? BIT.walk : 0) | (p.react === 'cheer' ? BIT.cheer : 0) | (p.react === 'sad' ? BIT.sad : 0) | (p.talk ? BIT.talk : 0) | (p.hidden ? BIT.hidden : 0);
+  const b = (p.sitting ? BIT.sit : 0) | (p.walking ? BIT.walk : 0) | (p.react === 'cheer' ? BIT.cheer : 0) | (p.react === 'sad' ? BIT.sad : 0) | (p.react === 'laugh' ? BIT.laugh : 0) | (p.talk ? BIT.talk : 0) | (p.hidden ? BIT.hidden : 0) | (p.jump ? BIT.jump : 0);
   const yaw = Math.atan2(Math.sin(p.yaw || 0), Math.cos(p.yaw || 0));
   return [Math.round(p.x * 100), Math.round(p.z * 100), Math.round(yaw * 100), b];
 }
 export function unpackPerson(v) {
   const [x, z, y, b] = v;
-  return { x: x / 100, z: z / 100, yaw: y / 100, sitting: !!(b & BIT.sit), walking: !!(b & BIT.walk), react: b & BIT.cheer ? 'cheer' : b & BIT.sad ? 'sad' : null, talk: !!(b & BIT.talk), hidden: !!(b & BIT.hidden) };
+  return { x: x / 100, z: z / 100, yaw: y / 100, sitting: !!(b & BIT.sit), walking: !!(b & BIT.walk), react: b & BIT.cheer ? 'cheer' : b & BIT.sad ? 'sad' : b & BIT.laugh ? 'laugh' : null, talk: !!(b & BIT.talk), hidden: !!(b & BIT.hidden), jump: !!(b & BIT.jump) };
 }
 const angLerp = (a, b, k) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; };
 /* État de chaque personnage à l'instant rt (temps du projecteur).

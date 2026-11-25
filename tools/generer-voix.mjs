@@ -12,7 +12,7 @@
 
 import { mkdir, writeFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { GAME, LINES, ELEVEN } from '../config.js';
+import { GAME, LINES, ELEVEN, voiceSettings } from '../config.js';
 import { allLines, keyFor, spoken } from '../voices.js';
 
 const KEY = process.env.ELEVENLABS_API_KEY;
@@ -27,7 +27,7 @@ await mkdir(dir, { recursive: true });
 
 async function tts(l) {
   const voice = ELEVEN.voices[l.who];
-  const body = { text: spoken(l.text), model_id: ELEVEN.model, voice_settings: ELEVEN.settings[l.who] || ELEVEN.settings.default };
+  const body = { text: spoken(l.text), model_id: ELEVEN.model, voice_settings: voiceSettings(l.who, l.text) };
   for (let attempt = 1; attempt <= 4; attempt++) {
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {
       method: 'POST', headers: { 'xi-api-key': KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(body)

@@ -31,8 +31,10 @@ body.s3d.split #stage{flex:0 0 24%}
 body.s3d.split h2{font-size:22px}
 body.s3d.split main{gap:9px;padding-top:12px}
 body.s3d.split main{flex:1 1 auto;max-height:none}
-#load{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut);font-weight:600;transition:opacity .6s}
-#load.off{opacity:0;pointer-events:none}
+#load{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px;background:radial-gradient(120% 90% at 50% 40%,#1c262a 0%,#0c1113 75%);color:var(--mut);font-weight:600;transition:opacity .6s,visibility 0s linear .6s;z-index:3}
+#load i{display:block;width:min(220px,60vw);height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}
+#load i b{display:block;height:100%;width:6%;background:var(--acc);transition:width .3s}
+#load.off{opacity:0;visibility:hidden;pointer-events:none}
 #chip{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:7px 14px;border-radius:99px;background:rgba(12,17,19,.86);font:700 15px/1.2 Barlow,sans-serif;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;transition:opacity .3s}
 #chip:empty{opacity:0}
 #big{position:absolute;left:0;right:0;bottom:14px;display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;opacity:0;transform:translateY(12px);transition:opacity .4s,transform .4s;text-shadow:0 2px 14px rgba(0,0,0,.7)}
@@ -76,13 +78,13 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 </head>
 <body>
 <header id="hd"><b>Choc des cultures</b><span id="me"></span><button id="tog" aria-label="Changer de vue">2D</button></header>
-<div id="stage"><canvas id="cv"></canvas><div id="load">Entrée dans la salle…</div><div id="chip"></div><div id="big"><div class="r" id="bigR"></div><div class="p" id="bigP"></div></div></div>
+<div id="stage"><canvas id="cv"></canvas><div id="load"><span id="loadT">Préparation de la salle 3D…</span><i><b id="loadB"></b></i></div><div id="chip"></div><div id="big"><div class="r" id="bigR"></div><div class="p" id="bigP"></div></div></div>
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=20';
-import { connect } from './net.js?v=20';
-import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=20';
+import { GAME } from './config.js?v=21';
+import { connect } from './net.js?v=21';
+import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=21';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -112,7 +114,7 @@ async function start() {
   async function boot3d() {
     if (V || booting || !want3d) return; booting = true;
     try {
-      const mod = await import('./scene.js?v=20');
+      const mod = await import('./scene.js?v=21');
       V = makeView(mod);
     } catch (e) { console.warn('3D indisponible', e); want3d = false; }
     booting = false; render(); if (V) V.sync();
@@ -123,7 +125,13 @@ async function start() {
     /* mêmes personnages que le projecteur ; leur état vient uniquement des instantanés publiés par le projecteur */
     const PROF = { M: 'louise', P: 'joe', K: 'leonard', Mi: 'ben' };
     const MODELS = ['s_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'];
-    Promise.race([R.ready, new Promise(r => setTimeout(r, 8000))]).then(() => setTimeout(() => $('load').classList.add('off'), 400));   // la salle réaliste peut arriver après
+    /* l'écran de chargement reste tant que la salle, les personnages et leurs shaders ne sont pas prêts
+       et que les images ne s'enchaînent pas régulièrement : on ne voit jamais la 3D se construire */
+    const loadTick = setInterval(() => { $('loadB').style.width = Math.round(6 + R.progress * 88) + '%'; }, 200);
+    Promise.race([R.ready.then(() => { $('loadT').textContent = 'Presque prêt…'; return R.settled; }), new Promise(r => setTimeout(r, 30000))]).then(() => {
+      clearInterval(loadTick); $('loadB').style.width = '100%'; window.__loadDone = { room: R.room, t: performance.now() };
+      setTimeout(() => $('load').classList.add('off'), 150);
+    });
     const clock = makeClock(); let buf = [], lastWorld = null;
     const DELAY = 300; // ms de retard d'affichage : absorbe les irrégularités du réseau
     net.onSnap(sn => {
