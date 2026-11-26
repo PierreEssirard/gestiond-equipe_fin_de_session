@@ -49,26 +49,27 @@ li button{min-height:32px;padding:4px 10px;font-size:13px;background:#2a353a;col
   <ol id="list"></ol>
 </main>
 <script type="module">
-import { GAME, LINES, ELEVEN, FIREBASE, voiceSettings } from '../config.js?v=21';
-import { allLines, keyFor, spoken } from '../voices.js?v=21';
+import { GAME, LINES, ELEVEN, FIREBASE, voiceSettings, voiceText } from '../config.js?v=22';
+import { allLines, keyFor, spoken } from '../voices.js?v=22';
 const $ = id => document.getElementById(id);
 const DB = FIREBASE.databaseURL.replace(/\/$/, '');
 const lines = allLines(GAME, LINES).map(l => ({ ...l, key: keyFor(l.who, l.text) }));
 const WHO = { N: 'Narrateur', M: 'Mélanie', P: 'Philippe', k: 'Klaus', mi: 'Mike' };
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-let have = new Set();
+let have = new Set(), repo = new Set();   // repo : clips rangés dans le dépôt (voix/*.mp3)
 $('list').innerHTML = lines.map((l, i) => `<li id="l${i}"><b>${i + 1}</b><b>${WHO[l.who]}</b><span>${esc(l.text)}</span><span class="row"><span class="st"></span><button data-play="${i}" hidden>Écouter</button></span></li>`).join('');
 const log = t => { $('log').textContent = t; };
 function mark(i, cls, st) { const el = $('l' + i); el.className = cls; el.querySelector('.st').textContent = st; el.querySelector('[data-play]').hidden = cls !== 'ok'; }
 async function refresh() {
   try { const r = await fetch(DB + '/voix.json?shallow=true'); have = new Set(Object.keys((await r.json()) || {})); } catch (e) { have = new Set(); }
+  try { const r = await fetch('../voix/index.json', { cache: 'no-store' }); repo = new Set(r.ok ? await r.json() : []); repo.forEach(k => have.add(k)); } catch (e) { }
   lines.forEach((l, i) => have.has(l.key) ? mark(i, 'ok', 'prête') : mark(i, '', ''));
   $('sum').textContent = `${lines.filter(l => have.has(l.key)).length} / ${lines.length} prêtes · ${lines.reduce((s, l) => s + spoken(l.text).length, 0)} caractères au total`;
 }
 refresh();
 const b64 = buf => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
 async function tts(key, l) {
-  const body = { text: spoken(l.text), model_id: ELEVEN.model, voice_settings: voiceSettings(l.who, l.text) };
+  const body = { text: voiceText(l.who, l.text) || spoken(l.text), model_id: ELEVEN.model, voice_settings: voiceSettings(l.who, l.text) };
   for (let a = 1; a <= 4; a++) {
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN.voices[l.who]}?output_format=mp3_44100_96`, { method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(body) });
     if (r.ok) return r.arrayBuffer();
@@ -101,7 +102,8 @@ $('go').onclick = async () => {
 };
 $('list').addEventListener('click', async e => {
   const b = e.target.closest('[data-play]'); if (!b) return;
-  const l = lines[+b.dataset.play]; const r = await fetch(`${DB}/voix/${l.key}.json`); const s = await r.json();
+  const l = lines[+b.dataset.play]; if (repo.has(l.key)) return new Audio(`../voix/${l.key}.mp3`).play();
+  const r = await fetch(`${DB}/voix/${l.key}.json`); const s = await r.json();
   if (s) new Audio('data:audio/mpeg;base64,' + s).play();
 });
 </script>

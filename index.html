@@ -105,12 +105,17 @@ body.withjoin #lower{right:340px}
 #banner.on{opacity:1}
 #banner h1{margin:0;font:800 clamp(56px,7vw,128px)/.95 "Barlow Condensed",sans-serif;text-shadow:0 4px 30px rgba(0,0,0,.6)}
 #banner p{margin:.3em 0 0;font:600 clamp(18px,1.7vw,28px)/1.2 Barlow,sans-serif;text-shadow:0 2px 12px rgba(0,0,0,.8)}
-#ctrl{position:fixed;right:24px;bottom:24px;display:flex;opacity:.35;transition:opacity .3s;z-index:5}
-#ctrl:hover,#ctrl:focus-within,body.lobby #ctrl{opacity:1}
+#ctrl{position:fixed;right:24px;bottom:24px;display:flex;gap:10px;z-index:5}
+#ctrl>button{opacity:.35;transition:opacity .3s,transform .1s}
+#ctrl>button.babil{opacity:.92}                       /* Babillage reste bien visible pendant la partie */
+#ctrl:hover>button,#ctrl:focus-within>button,body.lobby #ctrl>button{opacity:1}
 body:not(.lobby) #ctrl{bottom:auto;top:110px}
 body:not(.lobby) #join{display:none}
 button{font:700 15px/1 Barlow,sans-serif;min-height:40px;padding:8px 14px;border-radius:9px;border:1px solid var(--edge);background:rgba(13,17,19,.9);color:var(--ink);cursor:pointer}
 button.main{background:var(--acc);color:#111;border-color:var(--acc)}
+button.babil{background:#c0392b;border-color:#e05a4c;color:#fff}
+button.babil:hover{background:#d9463a}
+button.babil:active{transform:scale(.96)}
 button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 #mode{position:fixed;left:50%;top:14px;transform:translateX(-50%);font:600 13px Barlow,sans-serif;color:#111;background:var(--acc);padding:5px 12px;border-radius:99px;display:none}
 #mode.on{display:block}
@@ -145,16 +150,17 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <div id="mode">Mode répétition (sans Firebase) · ajoutez des joueurs fictifs avec B</div>
 <div id="boot"><div class="bx"><h1>Choc des <em>cultures</em></h1><p id="bootT">Chargement de la salle 3D…</p><div class="bar"><i id="bootBar"></i></div><button id="bootGo" class="main" hidden>Lancer la partie ▶</button><p id="bootH">Personnages, lumière et voix se préparent.</p></div></div>
 <nav id="ctrl">
+  <button id="bBabil" class="babil" title="Philippe interrompt : « Babillage ! » (touche X)">Babillage</button>
   <button id="bNext" class="main" title="Espace / → / télécommande">Commencer ▶</button>
 </nav>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=21';
-import { connect } from './net.js?v=21';
-import { keyFor, spoken, NARR } from './voices.js?v=21';
-import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=21';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=21';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=22';
+import { connect } from './net.js?v=22';
+import { keyFor, spoken, NARR } from './voices.js?v=22';
+import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=22';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=22';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -269,6 +275,8 @@ function publish(extra = {}) {
 }
 
 let sayTok = 0;
+let babilOn = false, babilP = null;                               // « Babillage ! » en cours (voir plus bas)
+const afterBabil = async () => { while (babilP) await babilP; };
 /* minuterie annulée dès qu'on appuie sur Suivant (évite les voix en double) */
 const later = (ms, fn) => { const t = sayTok; setTimeout(() => { if (t === sayTok) fn(); }, ms); };
 function hush() { if (sayQ.some(x => x[1] === CLAUDE)) claudeQueued = false; sayQ = []; sayTok++; saying = false; $('cap').classList.remove('on'); try { speechSynthesis.cancel(); } catch (e) { } if (curAudio) { try { curAudio.pause(); curAudio.src = ''; } catch (e) { } curAudio = null; } ['M', 'P', 'K', 'Mi'].forEach(id => R.talk(id, 0)); bubbles.forEach(el => el._until = 0); }
@@ -338,6 +346,7 @@ function playScene(lines) {
   (async () => {
     await new Promise(r => setTimeout(r, 900));
     for (const [w, t] of lines) {
+      if (babilP) await afterBabil();
       if (cur() !== st || S.phase !== 'scene' || tok !== sayTok) return;
       const id = w === 'k' ? 'K' : 'Mi', d = Math.max(2.6, t.length * .07);
       showBubble(id, t, w === 'k' ? 'Klaus · Stuttgart' : 'Mike · Detroit', w === 'k' ? GAME.teams[0].color : GAME.teams[1].color, 60);
@@ -429,6 +438,7 @@ async function sayNext() {
   const item = sayQ.shift();
   if (!item) { saying = false; lastSaid = performance.now(); $('cap').classList.remove('on'); R.cam(baseCam); return; }
   saying = true; const tok = sayTok; const [w, t, fx] = item;
+  if (babilP) { await afterBabil(); if (tok !== sayTok) return; }   // la réplique suivante attend la fin du « Babillage ! »
   if (t === CLAUDE) { S.claudeSaid = true; claudeQueued = false; }
   if (fx === 'youhou') S.youhouSaid = true;
   if (w === 'N') { $('cap').classList.remove('on'); R.cam(baseCam); }
@@ -490,29 +500,45 @@ async function dbClip(key) {
   const p = fetch(`${DBURL}/voix/${key}.json`).then(r => r.json()).then(b => b ? fetch('data:audio/mpeg;base64,' + b).then(r => r.blob()).then(bl => URL.createObjectURL(new Blob([bl], { type: 'audio/mpeg' }))) : null).catch(() => null);
   clipURL.set(key, p); return p;
 }
+/* fichier du dépôt gardé en mémoire (pour un clip qui doit partir sans aucun délai, comme « Babillage ! ») */
+function repoClip(key) {
+  if (!clipURL.has(key)) clipURL.set(key, fetch('voix/' + key + '.mp3').then(r => r.ok ? r.blob() : null).then(b => b ? URL.createObjectURL(b) : null).catch(() => null));
+  return clipURL.get(key);
+}
+const AV = { M: 'M', P: 'P', k: 'K', mi: 'Mi' };   // qui parle → personnage 3D (bouche qui bouge)
 let VOIX_DB = new Set();
 const voixReady = Promise.all([
   fetch('voix/index.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : []).then(a => { VOIX = new Set(a); }).catch(() => { }),
   DBURL ? fetch(DBURL + '/voix.json?shallow=true').then(r => r.json()).then(o => { VOIX_DB = new Set(Object.keys(o || {})); R.ready.then(async () => { for (const k of VOIX_DB) await dbClip(k); }); }).catch(() => { }) : null   // la 3D d'abord, les voix ensuite
 ]);
-async function speakP(text, who, loud) {
+async function speakP(text, who, loud, own) {
   const tok = sayTok;
   if (window.__fastVoice) return new Promise(r => setTimeout(r, 40));
   await Promise.race([voixReady, new Promise(r => setTimeout(r, 3000))]);
   if (tok !== sayTok) return;
   const key = keyFor(who, text);
   let src = null;
-  if (S.sound && VOIX.has(key)) src = 'voix/' + key + '.mp3';
+  if (S.sound && VOIX.has(key)) src = (clipURL.has(key) && await clipURL.get(key)) || 'voix/' + key + '.mp3';
   else if (S.sound && VOIX_DB.has(key)) src = await dbClip(key);
+  if (!own && babilP) await afterBabil();          // personne ne parle par-dessus « Babillage ! »
   if (tok !== sayTok) return;
   if (src) return new Promise(res => {
-    let done = false; const fin = () => { if (!done) { done = true; curAudio = null; res(); } };
-    const au = new Audio(src); curAudio = au; au.volume = 1;
+    const au = new Audio(src); let done = false;
+    const fin = () => { if (!done) { done = true; if (curAudio === au) curAudio = null; res(); } };
+    curAudio = au; au.volume = 1; au._who = AV[who] || null;
     if (loud && window.__actx) { try { const g = __actx.createGain(), c = __actx.createDynamicsCompressor(); g.gain.value = 2.2; __actx.createMediaElementSource(au).connect(g).connect(c).connect(__actx.destination); } catch (e) { } }
-    const fallback = () => { if (tok !== sayTok) return fin(); speakTTS(text, who).then(fin); };
-    au.onended = fin; au.onerror = () => { VOIX.delete(key); VOIX_DB.delete(key); fallback(); };
+    const fallback = async () => {
+      if (done || tok !== sayTok) return fin();
+      if (au._held) return;                          // mise en pause par « Babillage » : elle reprendra
+      if (!own && babilP) await afterBabil();
+      if (tok !== sayTok) return fin();
+      speakTTS(text, who).then(fin);
+    };
+    au.onended = fin; au.onerror = () => { if (done || tok !== sayTok) return fin(); VOIX.delete(key); VOIX_DB.delete(key); fallback(); };   // coupée par « Suivant » : ce n'est pas un clip cassé
     au.play().catch(fallback);
-    setTimeout(fin, Math.max(20, text.length * .15) * 1000);
+    /* filet de sécurité si le clip ne finit jamais ; une réplique mise en pause par « Babillage » attend sa reprise */
+    const guard = () => { if (done) return; if (au._held) { setTimeout(guard, 1000); return; } fin(); };
+    setTimeout(guard, Math.max(20, text.length * .15) * 1000);
   });
   return speakTTS(text, who);
 }
@@ -618,6 +644,51 @@ try { const qr = qrcode(0, 'M'); qr.addData(joinURL); qr.make(); $('qr').innerHT
 /* ---------- contrôles ---------- */
 function next() { const st = cur(); if (st.k === 'q' && S.phase !== 'reveal') { if (S.phase === 'scene') return; reveal(); return; } if (st.k === 'final') return; go(S.step + 1); }
 $('bNext').onclick = next;
+/* « Babillage ! » (bouton rouge ou touche X) : Philippe coupe la parole, en gros plan.
+   La voix en cours est mise en pause, pas coupée : elle reprend juste après, là où elle s'était arrêtée,
+   et la réplique suivante attend la fin du cri. Si « Suivant » change d'étape pendant le cri, la réplique interrompue
+   est abandonnée, comme d'habitude. */
+const [BW, BT] = LINES.babil[0], BKEY = keyFor(BW, BT);
+voixReady.then(() => { if (VOIX.has(BKEY)) repoClip(BKEY); });     // clip gardé en mémoire : il part dès l'appui
+function babillage() {
+  if (babilOn || !started) return babilP;
+  babilOn = true; babilP = shout().catch(() => { }).finally(() => { babilOn = false; babilP = null; });
+  return babilP;
+}
+async function shout() {
+  const tok = sayTok, held = curAudio && !curAudio.paused && !curAudio.ended ? curAudio : null;
+  if (held) { held._held = true; try { held.pause(); } catch (e) { } if (held._who) R.talk(held._who, 0); }
+  let ttsHeld = false; try { if (speechSynthesis.speaking && !speechSynthesis.paused) { speechSynthesis.pause(); ttsHeld = true; } } catch (e) { }
+  const cap = $('cap').classList.contains('on') ? { n: $('capN').innerHTML, t: $('capT').textContent } : null, view = R.view;
+  R.follow('P', 'face'); R.talk('P', 1.2);
+  $('capN').innerHTML = `${esc(PROFS.P.name)}<small>${esc(PROFS.P.role)}</small>`; $('capT').textContent = BT; $('cap').classList.add('on');
+  said.push({ w: BW, t: BT, fx: 'babil', step: S.step, phase: S.phase, view: R.view });
+  /* avec le clip : il part tout de suite ; son coupé (S), ou pas de clip et synthèse vocale en pause : sous-titre seul */
+  if (!S.sound || (!VOIX.has(BKEY) && !VOIX_DB.has(BKEY) && ttsHeld)) await new Promise(r => setTimeout(r, 1100));
+  else await speakP(BT, BW, true, true);
+  if (tok === sayTok) await new Promise(r => setTimeout(r, 350));
+  R.talk('P', 0);
+  const v = R.view, mine = v.key === 'follow' && v.follow.id === 'P' && v.follow.mode === 'face';
+  if (tok === sayTok) {
+    if ($('capT').textContent === BT) { if (cap) { $('capN').innerHTML = cap.n; $('capT').textContent = cap.t; } else $('cap').classList.remove('on'); }
+    if (mine) { if (view.key === 'follow' && view.follow.id) R.follow(view.follow.id, view.follow.mode); else R.cam(view.key); }
+    if (held) {
+      held._held = false;
+      if (held.src && !held.ended) {
+        curAudio = held; if (held._who) R.talk(held._who, isFinite(held.duration) ? Math.max(.4, held.duration - held.currentTime) : 1.5);
+        held.play().catch(() => { if (!held._held && held.onerror) held.onerror(); });   // clip devenu illisible : synthèse vocale à la place
+      }
+    }
+    if (ttsHeld) try { speechSynthesis.resume(); } catch (e) { }
+  } else {
+    if (held) { held._held = false; try { held.src = ''; } catch (e) { } }
+    if (ttsHeld) try { speechSynthesis.cancel(); } catch (e) { }
+    if (mine) R.cam(baseCam);
+  }
+}
+const bBabil = $('bBabil');
+bBabil.onmousedown = e => e.preventDefault();                       // le bouton ne garde pas le focus : Espace reste « Suivant »
+bBabil.onclick = () => { bBabil.blur(); babillage(); };
 const toggleSound = () => { S.sound = !S.sound; flash('Voix : ' + (S.sound ? 'oui' : 'non')); if (!S.sound) hush(); };
 const full = () => { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => { }); } catch (e) { } };
 let hq = true; const toggleQ = () => { hq = !hq; R.setQuality(hq); R.resize(innerWidth, innerHeight); flash('Qualité : ' + (hq ? 'haute' : 'réduite')); };
@@ -638,6 +709,7 @@ addEventListener('keydown', e => {
   else if (k === 'KeyF') full();
   else if (k === 'KeyQ') toggleQ();
   else if (k === 'KeyN') resetGame();
+  else if (k === 'KeyX' && !e.repeat) babillage();                // touche maintenue : un seul cri
 });
 
 /* ---------- boucle ---------- */
@@ -686,7 +758,7 @@ function frame(now) {
 }
 net.onPlayers(v => { players = v || {}; syncAvatars(); renderHUD(); if (cur().k === 'lobby') renderLobby(); });
 go(0); requestAnimationFrame(t => { last = t; frame(t); });
-window.__host = { addBots, next, go, S, R, cur, q: qq, act, steps, start: startGame, said: () => said, quiet: () => !saying && !sayQ.length, started: () => started, players: () => players, answers: () => answers, publishSnap: () => publishSnap(performance.now(), true), reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
+window.__host = { addBots, next, go, S, R, cur, q: qq, act, steps, start: startGame, babillage, babbling: () => babilOn, hush, say, voix: () => VOIX, audio: () => curAudio, said: () => said, quiet: () => !saying && !sayQ.length, started: () => started, players: () => players, answers: () => answers, publishSnap: () => publishSnap(performance.now(), true), reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
 </script>
 </body>
 </html>

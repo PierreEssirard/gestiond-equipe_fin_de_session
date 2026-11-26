@@ -248,3 +248,18 @@ test('instantanés : le saut et le rire passent aux téléphones', () => {
   assert.equal(q.jump, true); assert.equal(q.react, 'laugh');
   assert.equal(unpackPerson(packPerson({ x: 0, z: 0, yaw: 0 })).jump, false);
 });
+import { voiceSettings, voiceText } from '../config.js';
+import { readFileSync, existsSync } from 'node:fs';
+test('Babillage : une seule réplique de Philippe, criée, avec son clip dans le dépôt', () => {
+  assert.deepEqual(LINES.babil, [['P', 'Babillage !']]);
+  assert.equal(voiceText('P', 'Babillage !'), 'BABILLAGE !');
+  assert.equal(voiceText('P', 'Bonjour'), null);
+  assert.ok(voiceSettings('P', 'Babillage !').style > voiceSettings('P', 'Bonjour').style, 'plus expressif que d’habitude');
+  assert.ok(allLines(GAME, LINES).some(l => l.who === 'P' && l.text === 'Babillage !'), 'la réplique fait partie des voix à générer');
+  const repo = JSON.parse(readFileSync(new URL('../voix/index.json', import.meta.url), 'utf8')), all = new Set(allLines(GAME, LINES).map(l => keyFor(l.who, l.text)));
+  assert.ok(repo.includes(keyFor('P', 'Babillage !')), 'clip « Babillage ! » listé dans voix/index.json');
+  for (const k of repo) {
+    assert.ok(existsSync(new URL(`../voix/${k}.mp3`, import.meta.url)), `voix/${k}.mp3 manquant`);
+    assert.ok(all.has(k), `voix/${k}.mp3 ne correspond à aucune réplique`);
+  }
+});

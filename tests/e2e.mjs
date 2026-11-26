@@ -1,6 +1,7 @@
 // Test de bout en bout : un projecteur + deux téléphones dans un vrai navigateur, en mode local (sans Firebase).
 // Lancer : npm run e2e   (Chrome ou Edge installé ; sinon CHROME_PATH=/chemin/vers/chrome)
-import { check, wait, page, errors, finish } from './harness.mjs';
+import { check, wait, page, errors, finish, ctx } from './harness.mjs';
+import { fileURLToPath } from 'node:url';
 import { keyFor } from '../voices.js';
 import { LINES } from '../config.js';
 
@@ -23,6 +24,10 @@ try {
   const host = await page(`index.html?r=${ROOM}`, 1280, 720, 'projecteur');
   await wait(host, () => window.__host && __host.S);
   await host.evaluate(() => { window.__pause = true; __host.S.sound = false; });
+  await check('Babillage : rien ne se passe avant « Lancer la partie »', async () => {
+    const r = await host.evaluate(() => { if (__host.started()) return 'déjà lancé'; __host.babillage(); return __host.said().some(x => x.fx === 'babil') || __host.babbling() ? 'parlé' : ''; });
+    if (r === 'parlé') throw new Error('Philippe crie avant le lancement');
+  });
   const A = await page(`player.html?r=${ROOM}&pid=pA`, 390, 780, 'téléphone A');
   const B = await page(`player.html?r=${ROOM}&pid=pB`, 390, 780, 'téléphone B');
   for (const [p, n] of [[A, 'Alice'], [B, 'Bruno']]) { await p.fill('#nm', n); await p.click('#jn'); }
@@ -146,6 +151,59 @@ try {
     const late = (await host.evaluate(m => __spoken.filter(e => e.t > m).map(e => e.x), mark))
       .filter(x => [...keys].some(k => x.includes(k)) || [...texts].some(t => x.includes(t.slice(0, 25))));
     if (late.length) throw new Error('voix en trop : ' + late.slice(0, 2).join(' | ').slice(0, 160));
+  });
+
+  // ---- bouton Babillage, avec le son : la voix en cours se met en pause, Philippe crie, puis elle reprend ----
+  // (tout se joue dans la page, minuté par des setTimeout : rien n'est manqué même si l'image est lente)
+  const CLIP = fileURLToPath(new URL(`../voix/${keyFor(...LINES.babil[0])}.mp3`, import.meta.url));
+  const fakeLine = async text => {          // une réplique de Mélanie avec un vrai clip audio (servi depuis le dépôt)
+    const k = keyFor('M', text);
+    await ctx.route(`**/voix/${k}.mp3`, r => r.fulfill({ path: CLIP, contentType: 'audio/mpeg' }));
+    await host.evaluate(([k, t]) => {
+      window.__sleep = ms => new Promise(r => setTimeout(r, ms));
+      window.__until = async (f, t = 15000) => { const t0 = performance.now(); while (!f()) { if (performance.now() - t0 > t) return false; await __sleep(20); } return true; };
+      __host.hush(); __host.voix().add(k); __host.say([['M', t]]);
+    }, [k, text]);
+  };
+  const startLine = async () => {           // attend que la réplique joue, la ralentit (≈ 3 s), puis appuie sur Babillage
+    if (!await __until(() => { const a = __host.audio(); return a && !a.paused; })) return null;
+    const line = __host.audio(); line.playbackRate = .4;
+    await __until(() => line.currentTime > .1, 5000);
+    window.__n0 = __spoken.length; window.__at = line.currentTime; __host.babillage();
+    return line;
+  };
+  await check('Babillage : la réplique en cours se met en pause, Philippe crie en gros plan, puis elle reprend où elle en était', async () => {
+    const TL = 'Réplique de test : Philippe va me couper la parole.';
+    await fakeLine(TL);
+    const r = await host.evaluate(async start => {
+      const line = await (0, eval)(start)(); if (!line) return { err: 'la réplique de test ne démarre pas' };
+      const now = { paused: line.paused, b: __host.babbling(), cap: document.getElementById('capT').textContent, view: __host.R.view };
+      await __until(() => !__host.babbling(), 10000); await __sleep(150);
+      const after = { paused: line.paused, t: line.currentTime, cur: __host.audio() === line, cap: document.getElementById('capT').textContent };
+      const plays = __spoken.slice(__n0).map(e => String(e.x));
+      return { at: __at, now, after, plays, ended: await __until(() => line.ended, 15000) };
+    }, `(${startLine})`);
+    if (r.err) throw new Error(r.err);
+    if (!r.now.b || !r.now.paused) throw new Error('la réplique n’est pas mise en pause');
+    if (r.now.cap !== 'Babillage !') throw new Error('sous-titre : ' + r.now.cap);
+    if (r.now.view.key !== 'follow' || r.now.view.follow.id !== 'P' || r.now.view.follow.mode !== 'face') throw new Error('pas de gros plan sur Philippe : ' + JSON.stringify(r.now.view));
+    if (!r.plays.some(x => x.startsWith('blob:') || x.includes(keyFor(...LINES.babil[0])))) throw new Error('le cri n’a pas été joué : ' + r.plays.join(' | '));
+    if (r.after.paused || !r.after.cur) throw new Error('la réplique interrompue ne reprend pas : ' + JSON.stringify(r.after));
+    if (r.after.t < r.at - .05) throw new Error(`reprise depuis le début au lieu de ${r.at.toFixed(2)} s`);
+    if (r.after.cap !== TL) throw new Error('sous-titre non rétabli : ' + r.after.cap);
+    if (!r.ended) throw new Error('la réplique ne va pas jusqu’au bout');
+  });
+  await check('Babillage puis « Suivant » vers l’étape suivante : la réplique coupée ne reprend pas plus tard', async () => {
+    await fakeLine('Deuxième réplique de test, coupée pour de bon.');
+    const r = await host.evaluate(async start => {
+      const line = await (0, eval)(start)(); if (!line) return { err: 'la réplique de test ne démarre pas' };
+      const t0 = line.currentTime; await __sleep(200);
+      __host.go(__host.S.step + 1);
+      await __until(() => !__host.babbling(), 10000); await __sleep(1500);
+      return { paused: line.paused, moved: line.currentTime - t0, cur: __host.audio() === line };
+    }, `(${startLine})`);
+    if (r.err) throw new Error(r.err);
+    if (!r.paused || r.cur || r.moved > .05) throw new Error('la réplique coupée a repris : ' + JSON.stringify(r));
   });
   await host.evaluate(() => { __host.S.sound = false; });
 

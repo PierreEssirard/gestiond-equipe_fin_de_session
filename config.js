@@ -108,12 +108,16 @@ export const ELEVEN = {
     N: { stability: 0.6, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
     P: { stability: 0.35, similarity_boost: 0.8, style: 0.55, use_speaker_boost: true }
   },
-  /* réglages particuliers : le cri de Philippe, très expressif */
+  /* réglages particuliers : le cri de Philippe, très expressif ; « Babillage ! » lancé en majuscules
+     pour un vrai coup de gueule (say = texte envoyé à ElevenLabs à la place de la réplique) */
   lineSettings: [
-    { who: 'P', match: /^YOUHOU/, settings: { stability: 0.2, similarity_boost: 0.75, style: 0.9, use_speaker_boost: true } }
+    { who: 'P', match: /^YOUHOU/, settings: { stability: 0.2, similarity_boost: 0.75, style: 0.9, use_speaker_boost: true } },
+    { who: 'P', match: /^Babillage/, say: 'BABILLAGE !', settings: { stability: 0.3, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true } }
   ]
 };
-export const voiceSettings = (who, text) => (ELEVEN.lineSettings.find(x => x.who === who && x.match.test(text)) || {}).settings || ELEVEN.settings[who] || ELEVEN.settings.default;
+const lineSet = (who, text) => ELEVEN.lineSettings.find(x => x.who === who && x.match.test(text)) || {};
+export const voiceSettings = (who, text) => lineSet(who, text).settings || ELEVEN.settings[who] || ELEVEN.settings.default;
+export const voiceText = (who, text) => lineSet(who, text).say || null;   // null : le texte normal (spoken)
 
 /* ---------- Les profs (apparence générique, pas des portraits) ---------- */
 export const PROFS = {
@@ -211,6 +215,8 @@ export const LINES = {
   raceWin: [['P', 'Tabarouette, regardez-moi ça courir ! On se croirait aux Jeux olympiques.'], ['M', 'Ha ! C’est bien la première fois qu’on court vers le tableau dans mon cours.']],
   fusionOk: [['M', 'Fusion réussie. Vous avez intégré vos deux cultures, mieux que Daimler-Chrysler.'], ['P', 'Tabarouette. Je suis presque ému.'], ['M', 'Ha ! Il est ému. Notez la date.']],
   fusionKo: [['P', 'Tabarouette… Fusion ratée. Comme en 2007, finalement.'], ['M', 'Deux cultures, deux réponses : c’est exactement le cas qu’on vient d’étudier.']],
+  /* bouton « Babillage » du projecteur : Philippe interrompt la classe (ou la personne qui parle) */
+  babil: [['P', 'Babillage !']],
   final: [['M', 'Bravo à tous. Une belle démonstration de ce que la diversité apporte quand elle est bien gérée.'], ['P', 'Sont vilains étudiants… mais ce sont mes vilains étudiants préférés.'], ['M', 'Ha ha ! Il ne le dira qu’une fois. Merci à l’équipe Charlie !']]
 };
 

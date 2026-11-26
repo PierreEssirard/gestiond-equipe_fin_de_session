@@ -41,7 +41,7 @@ export function allLines(GAME, LINES) {
   pairs(LINES.lobby);
   Object.values(LINES.intro).forEach(pairs);
   ['lobbyMore', 'waiting', 'great', 'mid', 'bad', 'none'].forEach(k => (LINES[k] || []).forEach(pairs));
-  ['claude', 'waitFusion', 'youhou', 'raceWin', 'fusionOk', 'fusionKo', 'final'].forEach(k => pairs(LINES[k] || []));
+  ['claude', 'waitFusion', 'youhou', 'babil', 'raceWin', 'fusionOk', 'fusionKo', 'final'].forEach(k => pairs(LINES[k] || []));
   const seen = new Set();
   return out.filter(l => { const k = keyFor(l.who, l.text); if (seen.has(k)) return false; seen.add(k); return true; });
 }

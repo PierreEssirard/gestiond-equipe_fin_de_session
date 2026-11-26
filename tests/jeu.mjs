@@ -3,7 +3,7 @@
 // points identiques sur le téléphone et le projecteur, résultat final cohérent.
 // Vérifie aussi les répliques des profs sur toute la partie : YOUHOU (gros plan, saut, rire de Mélanie)
 // à la première bonne réponse majoritaire, « Tabarouette » au moins 3 fois, « vilains étudiants » au moins 2 fois,
-// « CréH, arrête d'utiliser Claude » une fois, et aucune réplique répétée.
+// « CréH, arrête d'utiliser Claude » une fois, et aucune réplique répétée ; touche X (Babillage) pendant une scène.
 // Lancer : npm run e2e:jeu
 import { check, wait, page, errors, finish, join } from './harness.mjs';
 
@@ -45,12 +45,31 @@ try {
     await p.click(`[data-v="${v}"]`);
   };
 
-  let first = true;
+  let first = true, babil = false;
   for (let i = 0; i < 80; i++) {
     const s = await hs(host);
     if (s.k === 'final') break;
     if (s.k !== 'q') { await spoke(host); await host.evaluate(() => __host.next()); await host.waitForTimeout(250); continue; }
-    if (s.phase === 'scene') { await wait(host, () => __host.S.phase !== 'scene', null, 90000); continue; }
+    if (s.phase === 'scene') {
+      if (!babil) {
+        babil = true;
+        await check('touche X pendant la scène : Philippe crie « Babillage ! » en gros plan, puis la scène continue', async () => {
+          // voix au rythme normal pendant cette scène : elle dure assez longtemps pour appuyer sur X en plein milieu
+          const v0 = await host.evaluate(() => { window.__fastVoice = false; return __host.R.view.key; });
+          await host.keyboard.press('x');
+          await wait(host, () => __host.said().some(x => x.fx === 'babil'), null, 5000);
+          const b = await host.evaluate(() => __host.said().find(x => x.fx === 'babil'));
+          if (b.w !== 'P' || b.t !== 'Babillage !') throw new Error('mauvaise réplique : ' + b.t);
+          if (b.phase !== 'scene') throw new Error('phase : ' + b.phase);
+          if (b.view.key !== 'follow' || b.view.follow.id !== 'P' || b.view.follow.mode !== 'face') throw new Error('pas de gros plan : ' + JSON.stringify(b.view));
+          await wait(host, () => !__host.babbling(), null, 8000);
+          const v1 = await host.evaluate(() => ({ key: __host.R.view.key, phase: __host.S.phase }));
+          if (v1.phase === 'scene' && v1.key !== v0) throw new Error(`caméra non rétablie : ${v1.key} au lieu de ${v0}`);
+        });
+        await host.evaluate(() => { window.__fastVoice = true; });
+      }
+      await wait(host, () => __host.S.phase !== 'scene', null, 90000); continue;
+    }
     if (s.phase === 'reveal') { await spoke(host, 'reveal'); await host.evaluate(() => __host.next()); await host.waitForTimeout(250); continue; }
     if (s.phase === 'closed') { await host.evaluate(() => __host.next()); continue; }
     // question ouverte

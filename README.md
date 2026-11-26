@@ -79,7 +79,7 @@ Les téléphones ont le même écran de chargement : la 3D n'apparaît qu'une fo
 
 ### Commandes (clavier ou télécommande de présentation)
 
-À l'écran, il n'y a qu'un bouton **Suivant**. Tout le reste se fait au clavier :
+À l'écran, il y a le bouton **Suivant** et le bouton rouge **Babillage**. Le reste se fait au clavier :
 
 | Touche | Action |
 |---|---|
@@ -90,6 +90,7 @@ Les téléphones ont le même écran de chargement : la 3D n'apparaît qu'une fo
 | F | Plein écran |
 | Q | Qualité haute / réduite (si l'ordinateur rame) |
 | N (deux fois) | Nouvelle partie (efface les joueurs et les scores) |
+| X (ou bouton rouge **Babillage**) | Philippe coupe la parole : « Babillage ! » en gros plan, puis la personne interrompue reprend |
 
 ### Répliques des profs
 
@@ -97,6 +98,12 @@ Plus de 100 répliques, tirées sans remise : aucune ne revient pendant une part
 3 fois « Tabarouette » et 2 fois « vilains étudiants », lance un « CréH, arrête d'utiliser Claude ! » pendant
 la ligne, et crie « YOUHOUUUUU » à la première bonne réponse majoritaire (gros plan, saut bras levés).
 Mélanie rit à ses blagues puis revient au contenu du cours. Le tout est vérifié par `npm run e2e:jeu`.
+
+Le bouton rouge **Babillage** (ou la touche X) fait crier « BABILLAGE ! » à Philippe à n'importe quel moment,
+en gros plan. La voix en cours est mise en pause, pas coupée : elle reprend juste après, là où elle s'était
+arrêtée (si « Suivant » fait passer à l'étape suivante pendant le cri, elle est abandonnée, comme d'habitude).
+Ce clip est rangé dans le dépôt (`voix/P_0ef3bea7.mp3`, listé dans `voix/index.json`) et gardé en mémoire
+dès le chargement : il part sans délai.
 
 ### Voix du narrateur et des profs (ElevenLabs)
 
@@ -213,7 +220,7 @@ npm run e2e          # vraie partie : projecteur + 2 téléphones dans Chrome/Ed
 npm run e2e:jeu      # partie complète jouée depuis 2 téléphones : chaque type d'activité, points, résultat final
 npm run e2e:rendu    # rendu 3D : pas d'écran noir, perte du contexte WebGL, téléphone léger, décor de secours
 npm run check        # tout ce qui précède
-npm run voix:check   # en ligne : chaque réplique a sa voix dans Firebase (lecture seule)
+npm run voix:check   # en ligne : chaque réplique a sa voix, dans Firebase ou dans voix/ (lecture seule)
 ```
 
 Le test de rendu reproduit notamment le « flash noir » : un seul pixel invalide (NaN ou infini, venant
