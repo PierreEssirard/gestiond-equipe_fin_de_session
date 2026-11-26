@@ -263,3 +263,29 @@ test('Babillage : une seule réplique de Philippe, criée, avec son clip dans le
     assert.ok(all.has(k), `voix/${k}.mp3 ne correspond à aucune réplique`);
   }
 });
+import { genreDuPrenom } from '../prenoms.js';
+import { LOOK, POOL, genreDe, choisirTenue, tenue } from '../avatars.js';
+test('prénoms : homme ou femme (France et Québec), composés, accents, majuscules ; mixtes et inconnus laissés au joueur', () => {
+  const m = ['Pierre-Nicolas', 'Philippe', 'Jean-François', 'Maxime', 'Pier-Luc', 'Mohamed', 'Félix', 'RAPHAËL', 'Louis-Philippe', 'Zachary', 'Gaël', 'Noël', 'Pierre Essirard'];
+  const f = ['Mélanie', 'Camille', 'Romane', 'Marie-Ève', 'Marie-Pier', 'Andréanne', 'Laurence', 'Frédérique', 'Inès', 'Gaëlle', 'Noëlle', 'Maude', 'julie'];
+  for (const n of m) assert.equal(genreDuPrenom(n), 'm', n);
+  for (const n of f) assert.equal(genreDuPrenom(n), 'f', n);
+  for (const n of ['Dominique', 'Charlie', 'Sasha', '', 'X', '42']) assert.equal(genreDuPrenom(n), null, n);
+});
+test('avatars : tenue d’homme ou de femme selon le prénom ou le choix du joueur, sans jumeaux tant que possible', () => {
+  assert.equal(genreDe({ name: 'Bruno' }), 'm'); assert.equal(genreDe({ name: 'Alice' }), 'f');
+  assert.equal(genreDe({ name: 'Dominique' }), 'x'); assert.equal(genreDe({ name: 'Dominique', g: 'f' }), 'f'); assert.equal(genreDe({ name: 'Alice', g: 'm' }), 'm');
+  const prises = [];
+  for (let i = 0; i < POOL.m.length; i++) { const k = choisirTenue('h' + i, 'm', prises); assert.ok(POOL.m.includes(k)); assert.ok(!prises.includes(k), 'pas de jumeau'); prises.push(k); }
+  assert.ok(POOL.m.includes(choisirTenue('h99', 'm', prises)), 'classe pleine : une tenue d’homme quand même');
+  for (const k of POOL.m) assert.ok(/^s_(ben|leonard)$/.test(LOOK[k][0]) && LOOK[k][1], 'homme : jamais la tenue de Mike ou de Klaus ' + k);
+  for (const k of POOL.f) assert.ok(/^s_(kate|jody|megan|suzie)$/.test(LOOK[k][0]), 'femme ' + k);
+  assert.equal(choisirTenue('p1', 'f', []), choisirTenue('p1', 'f', []), 'même résultat sur le projecteur et les téléphones');
+  const t = tenue('leo_c', 'p1'); assert.equal(t.model, 's_leonard'); assert.equal(t.variant, 'leo_c'); assert.ok(t.hair); assert.ok(t.scale > .95 && t.scale < 1.05);
+});
+test('avatars : chaque texture de tenue existe en deux tailles (projecteur et téléphone), chaque modèle aussi', () => {
+  for (const [k, [model, ...tex]] of Object.entries(LOOK)) {
+    assert.ok(existsSync(new URL(`../assets/${model}.glb`, import.meta.url)), `${k} : ${model}.glb`);
+    for (const t of tex.filter(Boolean)) for (const sfx of ['', '_m']) assert.ok(existsSync(new URL(`../assets/var/${t}${sfx}.webp`, import.meta.url)), `${k} : var/${t}${sfx}.webp`);
+  }
+});

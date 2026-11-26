@@ -98,7 +98,7 @@ body.withjoin #lower{right:340px}
 #cap b small{color:var(--mut);font-family:Barlow,sans-serif;font-weight:600;font-size:13px;margin-left:8px}
 #cap span{font-size:clamp(20px,1.7vw,30px);font-weight:600;line-height:1.25}
 #bubbles{position:fixed;inset:0;pointer-events:none}
-.bub{position:absolute;transform:translate(-50%,-100%);background:#fff;color:#111;padding:10px 14px;border-radius:12px;font:600 clamp(15px,1.2vw,20px)/1.25 Barlow,sans-serif;max-width:360px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.bub{position:absolute;left:0;top:0;transform:translate(-50%,-100%);will-change:transform;background:#fff;color:#111;padding:10px 14px;border-radius:12px;font:600 clamp(15px,1.2vw,20px)/1.25 Barlow,sans-serif;max-width:360px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
 .bub:after{content:"";position:absolute;left:50%;bottom:-9px;margin-left:-9px;border:9px solid transparent;border-bottom:0;border-top-color:#fff}
 .bub small{display:block;font:700 13px/1 Barlow,sans-serif;color:var(--c,#555);margin-bottom:3px}
 #banner{position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;transition:opacity .4s;opacity:0;width:max-content;max-width:90vw}
@@ -156,11 +156,12 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=22';
-import { connect } from './net.js?v=22';
-import { keyFor, spoken, NARR } from './voices.js?v=22';
-import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=22';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=22';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=23';
+import { connect } from './net.js?v=23';
+import { keyFor, spoken, NARR } from './voices.js?v=23';
+import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=23';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=23';
+import { LOOK, genreDe, choisirTenue, tenue } from './avatars.js?v=23';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -176,7 +177,7 @@ const net = await connect(ROOM);
 net.clearAnswers && net.clearAnswers(); // anciennes réponses d'une partie précédente dans la même salle
 if (net.mode === 'local') $('mode').classList.add('on');
 
-const R = createClassroom($('stage'), { room: new URLSearchParams(location.search).get('room') === '0' ? false : undefined, corners: GAME.corners, preload: ['louise_hd', 'joe_hd', 'leonard', 'ben', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'] });
+const R = createClassroom($('stage'), { room: new URLSearchParams(location.search).get('room') === '0' ? false : undefined, corners: GAME.corners, preload: ['louise_hd', 'joe_hd', 'leonard', 'ben', 's_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'], preloadVar: [...new Set(Object.values(LOOK).flatMap(l => l.slice(1)))] });
 function fit() { R.resize(innerWidth, innerHeight); }
 fit(); addEventListener('resize', fit);
 
@@ -191,7 +192,7 @@ function bootDone(msg) {
   if (navigator.webdriver) { startGame(); return; }          // tests automatiques
   $('bootGo').hidden = false; $('bootGo').focus();
 }
-R.ready.then(() => { $('bootT').textContent = 'Dernières vérifications…'; return R.settled; }).then(() => bootDone());
+R.ready.then(() => { if (!bootReady && $('bootT')) $('bootT').textContent = 'Dernières vérifications…'; return R.settled; }).then(() => bootDone());   // (déjà lancé après 30 s : rien à afficher)
 setTimeout(() => bootDone('Chargement plus long que prévu : vous pouvez lancer quand même.'), 30000);
 function startGame() {
   if (started) return; started = true;
@@ -216,8 +217,9 @@ const seatTaken = new Map();
 const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 const SK = ['#f1c7a5', '#e0ac85', '#c68a62', '#8d5a3b', '#f6d5bd', '#a8704c', '#d9a07a'], HC = ['#2b1d14', '#5a3a22', '#c9a063', '#1c1c1c', '#8a3b1e', '#d9c7a0', '#3d2b20'], PA = ['#2f3a4f', '#3b3b3b', '#5b4a3a', '#28344a', '#4a4f57'];
 const TOPS = [['#3d74d6', '#2f5fb8', '#5b8ee6', '#28509c', '#4a6fa8'], ['#d8453a', '#b9362d', '#e5675c', '#a32f27', '#c75048']];
-const MODELS = ['s_ben', 's_kate', 's_jody', 's_megan', 's_suzie', 's_leonard'];
-function lookFor(pid, team) { return { model: MODELS[hash(pid) % MODELS.length] }; }
+/* avatar : homme ou femme selon le prénom (ou le choix fait sur le téléphone), tenue la moins portée de la classe ;
+   enregistrée avec le joueur pour que les téléphones affichent exactement le même personnage */
+const lookFor = (pid, p) => p && LOOK[p.look] ? p.look : choisirTenue(pid, genreDe(p), [...avatars.values()].map(a => a.look));
 function freeSeat(team) {
   const order = SEATS.map((s, i) => i).filter(i => !seatTaken.has(i)).sort((a, b) => team ? SEATS[b].x - SEATS[a].x : SEATS[a].x - SEATS[b].x);
   if (order.length) return order[0];
@@ -237,11 +239,14 @@ function syncAvatars() {
     if (avatars.has(pid) || !p || !p.name) continue;
     const team = p.team ? 1 : 0, seat = (Number.isInteger(p.seat) && SEATS[p.seat] && !seatTaken.has(p.seat)) ? p.seat : freeSeat(team);
     if (seat !== null) seatTaken.set(seat, pid);
-    if ((p.seat ?? null) !== seat) net.setPlayer(pid, { seat });
-    avatars.set(pid, { seat, team });
-    R.addPerson(pid, lookFor(pid, team), { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: p.name, color: GAME.teams[team].color });
+    const look = lookFor(pid, p);
+    avatars.set(pid, { seat, team, look });
+    R.addPerson(pid, tenue(look, pid), { x: DOOR.x + .8, z: DOOR.z, yaw: -Math.PI / 2, label: p.name, color: GAME.teams[team].color });
     R.moveTo(pid, DOOR.x, DOOR.z, { direct: true });
     setTimeout(() => goHome(pid), 500);
+    /* place et tenue enregistrées avec le joueur (après coup : Firebase peut rappeler syncAvatars aussitôt) */
+    const upd = {}; if ((p.seat ?? null) !== seat) upd.seat = seat; if (p.look !== look) upd.look = look;
+    if (Object.keys(upd).length) net.setPlayer(pid, upd);
   }
   for (const pid of [...avatars.keys()]) if (!players[pid]) { const a = avatars.get(pid); if (a.seat !== null) seatTaken.delete(a.seat); avatars.delete(pid); R.removePerson(pid); }
 }
@@ -463,11 +468,14 @@ function showBubble(id, text, who, color, sec) {
   el.innerHTML = `<small style="--c:${color === '#ffd34d' ? '#8a6a00' : color}">${esc(who)}</small>${esc(text)}`;
   el.style.display = 'block'; el._until = performance.now() + sec * 1000;
 }
+/* bulles de Klaus et Mike : déplacées par le compositeur (transform), sans recalcul de mise en page à chaque image */
 function placeBubbles() {
   bubbles.forEach((el, id) => {
-    if (performance.now() > el._until) { el.style.display = 'none'; return; }
-    const p = R.screenPos(id, 1.95); if (!p) { el.style.display = 'none'; return; }
-    el.style.display = 'block'; el.style.left = p.x + 'px'; el.style.top = (p.y - 6) + 'px';
+    const p = performance.now() > el._until ? null : R.screenPos(id, 1.95);
+    const show = !!p; if (el._shown !== show) { el._shown = show; el.style.display = show ? 'block' : 'none'; }
+    if (!p) return;
+    const x = Math.round(p.x * 2) / 2, y = Math.round((p.y - 6) * 2) / 2;
+    if (x !== el._x || y !== el._y) { el._x = x; el._y = y; el.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-100%)`; }
   });
 }
 let VOICES = [], VMAP = {};
@@ -744,14 +752,22 @@ const pubWorld = () => { if (worldQ) return; worldQ = true; queueMicrotask(() =>
   R.setFlag = v => { f(v); WORLD.flag = v ?? null; pubWorld(); };
   R.setScreen = lines => { sc(lines); WORLD.screen = { top: lines.top || '', main: lines.main || '', foot: lines.foot || '' }; pubWorld(); };
 }
+const hud = { arc: null, n: null, low: null, clock: null };
 function frame(now) {
   const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
+  /* chrono et horloge : le texte n'est réécrit que lorsqu'il change (une fois par seconde), pas à chaque image */
   if (S.timer) {
     S.timer.left -= Math.min(raw, 1); const l = Math.max(0, S.timer.left);
-    $('arc').style.strokeDashoffset = 213.6 * (1 - l / S.timer.total); $('ringT').textContent = Math.ceil(l); $('ring').classList.toggle('low', l <= 5);
+    const off = Math.round(213.6 * (1 - l / S.timer.total) * 4) / 4, n = Math.ceil(l), low = l <= 5;
+    if (off !== hud.arc) { hud.arc = off; $('arc').style.strokeDashoffset = off; }
+    if (n !== hud.n) { hud.n = n; $('ringT').textContent = n; }
+    if (low !== hud.low) { hud.low = low; $('ring').classList.toggle('low', low); }
     if (S.timer.left <= 0) closeQ();
+  } else hud.arc = hud.n = hud.low = null;
+  if (S.t0 !== null) {
+    const e = (now - S.t0) / 1000, f = v => String(Math.floor(v)).padStart(2, '0'), t = `${f(e / 60)}:${f(e % 60)}<em>sur ${f(GAME.minutes)}:00</em>`;
+    if (t !== hud.clock) { hud.clock = t; $('clock').innerHTML = t; $('clock').style.color = e > GAME.minutes * 60 ? '#ff8a7a' : ''; }
   }
-  if (S.t0 !== null) { const e = (now - S.t0) / 1000, f = v => String(Math.floor(v)).padStart(2, '0'); $('clock').innerHTML = `${f(e / 60)}:${f(e % 60)}<em>sur ${f(GAME.minutes)}:00</em>`; $('clock').style.color = e > GAME.minutes * 60 ? '#ff8a7a' : ''; }
   if (!window.__pause) { if (started && raw > .06) R.advance(Math.min(raw, 2) - dt); R.tick(dt); } /* déplacements en temps réel même à faible FPS */
   placeBubbles();
   requestAnimationFrame(frame);

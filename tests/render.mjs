@@ -82,6 +82,32 @@ try {
     if (m !== n) throw new Error(`${m - n} programmes compilés en cours de route`);
   });
 
+  await check('gros plan : profondeur de champ (fond flou) sans image noire ni recompilation ; plan large : aucun flou', async () => {
+    const n = await host.evaluate(() => __host.R.stats().programs);
+    await host.evaluate(() => { __host.R.setLevel(0); __host.R.follow('P', 'face', true); });   // qualité maximale (le rendu logiciel la ferait baisser)
+    const m = await frame(host, '__host', 24);
+    const st = await host.evaluate(() => __host.R.stats());
+    if (!st.dof) throw new Error('profondeur de champ inactive en gros plan');
+    if (m.mean < 35 || m.black > .05) throw new Error(`image : moyenne ${m.mean.toFixed(0)}, noir ${(m.black * 100).toFixed(1)} %`);
+    await host.evaluate(() => __host.R.cam('wide', true)); await frame(host, '__host', 30);
+    const w = await host.evaluate(() => __host.R.stats());
+    if (w.dof) throw new Error('flou encore actif en plan large');
+    if (w.programs !== n) throw new Error(`${w.programs - n} programmes compilés pour le flou`);
+    await host.evaluate(() => { __host.R.setLevel(2); __host.R.follow('P', 'face', true); }); await frame(host, '__host', 30);
+    if ((await host.evaluate(() => __host.R.stats())).dof) throw new Error('ordinateur qui peine : le flou devrait se couper');
+    await host.evaluate(() => __host.R.cam('wide', true));
+  });
+  await check('nouveaux joueurs avec tenues (texture et cheveux de variante) : aucune recompilation', async () => {
+    const n = await host.evaluate(() => __host.R.stats().programs);
+    await host.evaluate(() => { const R = __host.R; ['leo_c', 'megan_a', 'ben_d'].forEach((v, i) => R.addPerson('var' + i, { model: { leo_c: 's_leonard', megan_a: 's_megan', ben_d: 's_ben' }[v], variant: v, hair: { leo_c: 'leonard_cheveux_blond_fonce', megan_a: 'megan_cheveux_auburn' }[v] }, { x: i - 1, z: 2 })); });
+    await wait(host, () => [0, 1, 2].every(i => __host.R.people.get('var' + i)?.shown), null, 60000);
+    const sh = await host.evaluate(() => [0, 1, 2].map(i => __host.R.people.get('var' + i).shown));
+    if (!sh[0].body || !sh[0].hair || !sh[1].hair || !sh[2].body) throw new Error('tenue non appliquée : ' + JSON.stringify(sh));
+    await frame(host, '__host', 6);
+    const m = await host.evaluate(() => __host.R.stats().programs);
+    if (m !== n) throw new Error(`${m - n} programmes compilés à l’arrivée des joueurs`);
+  });
+
   // ---- téléphone ----
   const A = await page('player.html?r=RENDU&pid=pR', 390, 780, 'téléphone');
   await A.addScriptTag({ content: PROBE });

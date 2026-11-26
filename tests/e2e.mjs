@@ -4,6 +4,8 @@ import { check, wait, page, errors, finish, ctx } from './harness.mjs';
 import { fileURLToPath } from 'node:url';
 import { keyFor } from '../voices.js';
 import { LINES } from '../config.js';
+import { genreDuPrenom } from '../prenoms.js';
+import { POOL, LOOK } from '../avatars.js';
 
 const ROOM = 'TEST';
 const hostState = h => h.evaluate(() => ({ step: __host.S.step, phase: __host.S.phase, gid: __host.S.gid }));
@@ -30,15 +32,39 @@ try {
   });
   const A = await page(`player.html?r=${ROOM}&pid=pA`, 390, 780, 'téléphone A');
   const B = await page(`player.html?r=${ROOM}&pid=pB`, 390, 780, 'téléphone B');
-  for (const [p, n] of [[A, 'Alice'], [B, 'Bruno']]) { await p.fill('#nm', n); await p.click('#jn'); }
-
-  await check('les deux joueurs apparaissent sur le projecteur', () => wait(host, () => Object.values(__host.players()).filter(p => p.name).length === 2));
+  for (const [p, n, g] of [[A, 'Alice', 'f'], [B, 'Bruno', 'm']]) {
+    await p.fill('#nm', n);
+    await check(`${n} : avatar ${g === 'f' ? 'femme' : 'homme'} proposé d’après le prénom`, async () => {
+      const v = await p.evaluate(() => document.querySelector('.av [aria-checked="true"]')?.dataset.g || null); if (v !== g) throw new Error('proposé : ' + v);
+    });
+    await p.click('#jn');
+  }
+  await check('les deux joueurs apparaissent sur le projecteur', () => wait(host, () => Object.values(__host.players()).filter(p => p.name).length === 2, null, 60000));
+  await check('prénom mixte : rien n’est coché, le joueur choisit, et son choix l’emporte sur le prénom', async () => {
+    const C = await page(`player.html?r=${ROOM}&pid=pC`, 390, 780, 'téléphone C');
+    await C.fill('#nm', 'Dominique');
+    const v = await C.evaluate(() => [document.querySelector('.av [aria-checked="true"]')?.dataset.g || null, document.getElementById('avh').textContent]);
+    if (v[0] !== null || !/choisir/.test(v[1])) throw new Error('mixte : ' + JSON.stringify(v));
+    await C.click('.av [data-g="f"]'); await C.fill('#nm', 'Bruno');
+    const w = await C.evaluate(() => document.querySelector('.av [aria-checked="true"]')?.dataset.g); await C.close();
+    if (w !== 'f') throw new Error('le choix du joueur a été remplacé : ' + w);
+  });
   await check('équipes équilibrées', async () => { const t = await host.evaluate(() => Object.values(__host.players()).map(p => p.team ? 1 : 0).sort().join()); if (t !== '0,1') throw new Error('équipes : ' + t); });
-  await check('chaque joueur reçoit une place', () => wait(host, () => Object.values(__host.players()).every(p => Number.isInteger(p.seat))));
+  await check('chaque joueur reçoit une place', () => wait(host, () => Object.values(__host.players()).every(p => Number.isInteger(p.seat)), null, 60000));
   await check('la salle 3D s’affiche sur le téléphone', () => wait(A, () => window.__phone && document.body.classList.contains('s3d'), null, 30000));
   await check('la salle réaliste précalculée est chargée (projecteur et téléphone)', async () => {
     await wait(host, () => __host.R.room === true, null, 180000);
     await wait(A, () => window.__phone && __phone.R.room === true, null, 180000);
+  });
+  await check('avatars : femme pour Alice, homme pour Bruno, même personnage et même tenue sur le projecteur et le téléphone', async () => {
+    await wait(host, () => ['pA', 'pB'].every(id => __host.players()[id]?.look && __host.R.people.get(id)?.shown), null, 60000);
+    const P = await host.evaluate(() => __host.players()), h = await host.evaluate(() => ['pA', 'pB'].map(id => __host.R.people.get(id).shown));
+    if (P.pA.g !== 'f' || !POOL.f.includes(P.pA.look)) throw new Error('Alice : ' + P.pA.g + ' ' + P.pA.look);
+    if (P.pB.g !== 'm' || !POOL.m.includes(P.pB.look)) throw new Error('Bruno : ' + P.pB.g + ' ' + P.pB.look);
+    [P.pA.look, P.pB.look].forEach((k, i) => { const [model, body, hair] = LOOK[k]; if (h[i].model !== model || h[i].body !== (body || null) || h[i].hair !== (hair || null)) throw new Error(`projecteur : ${k} affiché ${JSON.stringify(h[i])}`); });
+    await wait(A, () => ['pA', 'pB'].every(id => __phone.R.people.get(id)?.shown), null, 60000);
+    const t = await A.evaluate(() => ['pA', 'pB'].map(id => __phone.R.people.get(id).shown));
+    if (JSON.stringify(t) !== JSON.stringify(h)) throw new Error('téléphone ' + JSON.stringify(t) + ' ≠ projecteur ' + JSON.stringify(h));
   });
   // dans ce test, les pages ne dessinent pas (rendu logiciel très lent) ; la synchronisation continue de tourner
   for (const p of [A, B]) await p.evaluate(() => { window.__pause = true; });
@@ -218,6 +244,12 @@ try {
 
   // ---- partie complète avec 12 joueurs fictifs ----
   await host.evaluate(() => __host.addBots(12));
+  await check('joueurs fictifs : avatar selon le prénom, et pas deux fois la même tenue tant qu’il en reste', async () => {
+    await wait(host, () => Object.values(__host.players()).filter(p => p.name).every(p => p.look), null, 20000);
+    const L = await host.evaluate(() => Object.values(__host.players()).filter(p => p.name).map(p => ({ name: p.name, look: p.look })));
+    for (const p of L) { const g = genreDuPrenom(p.name); if (g && !POOL[g].includes(p.look)) throw new Error(`${p.name} → ${p.look}`); }
+    for (const g of ['m', 'f']) { const ks = L.filter(p => POOL[g].includes(p.look)).map(p => p.look); if (ks.length <= POOL[g].length && new Set(ks).size !== ks.length) throw new Error('jumeaux : ' + ks.join(', ')); }
+  });
   await check('personne ne se superpose dans les coins (14 joueurs)', async () => {
     await A.click('[data-v="0"]'); await B.click('[data-v="0"]');
     await wait(host, () => Object.keys(__host.answers()).length >= 14 || __host.S.phase !== 'open', null, 25000);

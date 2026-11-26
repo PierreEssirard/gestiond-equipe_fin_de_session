@@ -60,7 +60,7 @@ export function createClassroom(canvas, opts = {}) {
   let lost = false, restored = 0;
   canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; }, false);
   canvas.addEventListener('webglcontextrestored', () => {
-    lost = false; restored++; resPending = true; renderer.shadowMap.needsUpdate = true;
+    lost = false; restored++; resPending = true; renderer.shadowMap.needsUpdate = true; dofPrime = 2;   // shaders recréés : le flou aussi, tout de suite
     try { if (roomOn) captureEnv(); else scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture; } catch (e) { console.warn('reflets après perte du contexte', e); }
   }, false);
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#0c1113');
@@ -294,12 +294,36 @@ export function createClassroom(canvas, opts = {}) {
   /* progression du chargement (écran d'attente) */
   let loadN = 0, loadDone = 0;
   const track = p => { loadN++; p.then(() => loadDone++, () => loadDone++); return p; };
+  /* peau, tissus, chaussures, yeux : la texture « Glossiness » des personnages (canal vert = brillance) donne la rugosité
+     de chaque zone : peau légèrement satinée, yeux et lèvres humides, cuir brillant, tissus mats (au lieu d'une valeur unique) */
+  const GLOSS = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness;\n#ifdef USE_ROUGHNESSMAP\n\troughnessFactor *= clamp( 1. - texture2D( roughnessMap, vRoughnessMapUv ).g, .34, 1. );\n#endif'); };
+  const GLOSS_KEY = () => 'gloss-v1';
   const loadModel = name => modelCache[name] || (modelCache[name] = track(loader.loadAsync(base + name + '.glb' + BUST)).then(g => {
     g.scene.traverse(n => { if (n.isMesh) { const ms = Array.isArray(n.material) ? n.material : [n.material]; ms.forEach(m => { [m.map, m.normalMap].forEach(t => { if (t) t.anisotropy = Math.min(LITE ? 4 : 8, renderer.capabilities.getMaxAnisotropy()); });   /* visages nets même de biais */
       if (/^acc_/.test(m.name)) return;   /* bijoux : matériaux d'origine (nacre, argent) */
-      m.metalness = 0; m.metalnessMap = null; m.roughnessMap = null; m.roughness = /hair|eye|lash/i.test(m.name) ? .55 : .78; m.envMapIntensity = charEnv; if (/lash|hair/i.test(m.name)) { m.alphaTest = .4; m.transparent = false; m.depthWrite = true; } m.needsUpdate = true; }); } });
+      m.metalness = 0; m.metalnessMap = null;
+      if (m.roughnessMap && /_body$/.test(m.name)) { m.roughness = 1; m.onBeforeCompile = GLOSS; m.customProgramCacheKey = GLOSS_KEY; }
+      else { m.roughnessMap = null; m.roughness = /hair|eye|lash/i.test(m.name) ? .55 : .78; }
+      m.envMapIntensity = charEnv;
+      /* cheveux et cils : bords de mèches adoucis par l'anticrénelage (alpha-to-coverage) au lieu d'un découpage net */
+      if (/lash|hair/i.test(m.name)) { m.alphaTest = .2; m.alphaToCoverage = true; m.transparent = false; m.depthWrite = true; }
+      m.needsUpdate = true; }); } });
     return g;
   }));
+  /* tenues des étudiants : textures de variante (assets/var), chargées une fois, décodées hors du fil principal */
+  const varBase = opts.varAssets || base + 'var/', varTex = {}, varMats = new Map();
+  const loadVar = name => varTex[name] || (varTex[name] = track(new THREE.TextureLoader().loadAsync(varBase + name + (LITE ? '_m' : '') + '.webp' + BUST)).then(async t => {
+    try { if (t.image && t.image.decode) await t.image.decode(); } catch (e) { }
+    t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(LITE ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
+    try { renderer.initTexture(t); } catch (e) { }                // envoyée à la carte graphique tout de suite, pas en pleine image
+    return t;
+  }));
+  /* même shader que le matériau d'origine (seule la texture change) : aucune recompilation */
+  function varMat(m, t) {
+    const k = m.uuid + '|' + t.uuid; let c = varMats.get(k);
+    if (!c) { c = m.clone(); c.map = t; if (m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) { c.onBeforeCompile = m.onBeforeCompile; c.customProgramCacheKey = m.customProgramCacheKey; } varMats.set(k, c); }
+    return c;
+  }
   const ANIMS = { idle: 'anim_idle', walk: 'anim_walking', sad: 'anim_sad_idle', cheer: 'anim_celebrating' };
   const animsReady = Promise.all(Object.entries(ANIMS).map(([k, f]) => track(loader.loadAsync(base + f + '.glb')).then(g => {
     const c = g.animations[0];
@@ -382,12 +406,13 @@ export function createClassroom(canvas, opts = {}) {
   function warm() { const h = []; [...zoneMeshes, lineMesh, flag].forEach(o => { if (!o.visible) { o.visible = true; h.push(o); } }); try { renderer.compile(scene, camera); } catch (e) { } h.forEach(o => o.visible = false); }
   /* tout est prêt quand la salle, les animations et TOUS les personnages sont chargés, leurs textures envoyées
      à la carte graphique et leurs shaders compilés : rien ne se charge ni ne se compile ensuite pendant le jeu */
-  const modelsReady = Promise.all((opts.preload || []).map(n => loadModel(n).catch(() => null)));
+  const modelsReady = Promise.all([...(opts.preload || []).map(n => loadModel(n).catch(() => null)), ...(opts.preloadVar || []).map(n => loadVar(n).catch(() => null))]);
   async function warmGPU() {
     const ms = (await Promise.all(Object.values(modelCache).map(p => p.catch(() => null)))).filter(Boolean);
     const seen = new Set(), up = t => { if (t && t.isTexture && !seen.has(t)) { seen.add(t); try { renderer.initTexture(t); } catch (e) { } } };
     const textures = o => o.traverse(n => { if (n.material) (Array.isArray(n.material) ? n.material : [n.material]).forEach(m => { for (const k in m) if (m[k] && m[k].isTexture) up(m[k]); }); });
     textures(scene); ms.forEach(g => textures(g.scene));
+    for (const p of Object.values(varTex)) { const t = await p.catch(() => null); if (t) up(t); }
     const stage = new THREE.Group(), dir = new THREE.Vector3(); camera.updateMatrixWorld(); camera.getWorldDirection(dir);
     ms.forEach((g, i) => {
       const c = cloneSkinned(g.scene); c.traverse(n => { if (n.isMesh) { n.castShadow = !LITE; n.receiveShadow = true; n.frustumCulled = false; } });
@@ -400,7 +425,8 @@ export function createClassroom(canvas, opts = {}) {
     scene.add(stage);
     try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); } catch (e) { }
     renderer.shadowMap.needsUpdate = true;
-    try { if (composer && hq) composer.render(0); else renderer.render(scene, camera); } catch (e) { }
+    try { if (dof) { dof.enabled = true; dof.uniforms.aperture.value = 8; } if (composer && hq) composer.render(0); else renderer.render(scene, camera); } catch (e) { }
+    if (dof) { dof.enabled = false; dof.uniforms.aperture.value = 0; }
     scene.remove(stage); ring.geometry.dispose();
   }
   let readyAt = 0, settleRes = null, settleN = 0, lastFrame = 0;
@@ -428,8 +454,8 @@ export function createClassroom(canvas, opts = {}) {
   function addPerson(id, look, o = {}) {
     if (people.has(id)) return people.get(id);
     const root = new THREE.Group(), body = new THREE.Group(); root.add(body); scene.add(root);
-    const a = { slot: people.size % 3, fast: !!(o.fast || o.me), id, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
-    if (o.label) { a.label = labelSprite(o.label, o.color || '#fff'); root.add(a.label); }
+    const a = { slot: people.size % 3, fast: !!(o.fast || o.me), id, look, root, body, x: o.x ?? 0, z: o.z ?? 0, yaw: o.yaw ?? 0, tyaw: o.yaw ?? 0, path: [], spd: o.spd || (1.25 + Math.random() * .2), sit: 0, sitting: false, walking: false, react: null, talk: 0, after: 'stand', faceYaw: null, bones: null, mixer: null, actions: null, cur: null };
+    if (o.label) { a.label = labelSprite(o.label, o.color || '#fff'); a.label.visible = !labelsOff; root.add(a.label); }
     if (o.me) {
       const ring = new THREE.Mesh(new THREE.RingGeometry(.36, .5, 48), new THREE.MeshBasicMaterial({ color: '#ffd34d', transparent: true, opacity: .95, depthWrite: false, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = .02; ring.renderOrder = 4; root.add(ring); a.ring = ring;
@@ -438,15 +464,18 @@ export function createClassroom(canvas, opts = {}) {
     }
     { const bl = new THREE.Mesh(blobGeo, blobMat); bl.rotation.x = -Math.PI / 2; bl.position.y = .006; bl.renderOrder = 1; root.add(bl); a.blob = bl; }
     if (o.color) { const d = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: o.color, transparent: true, opacity: .7, depthWrite: false })); d.rotation.x = -Math.PI / 2; d.position.y = .015; root.add(d); a.disc = d; }
-    Promise.all([loadModel(look.model || 'kate'), ready]).then(([g]) => {
-      if (!people.has(id)) return;
-      const m = cloneSkinned(g.scene); m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; if (n.geometry) { n.geometry.computeBoundingSphere(); n.geometry.boundingSphere.radius *= 1.4; } } });
+    Promise.all([loadModel(look.model || 'kate'), look.variant ? loadVar(look.variant).catch(() => null) : null, look.hair ? loadVar(look.hair).catch(() => null) : null, ready]).then(([g, vt, ht]) => {
+      if (!people.has(id) || people.get(id) !== a) return;
+      const m = cloneSkinned(g.scene); m.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; if (n.geometry) { n.geometry.computeBoundingSphere(); n.geometry.boundingSphere.radius *= 1.4; }
+        if (vt && /_body$/.test(n.material.name)) n.material = varMat(n.material, vt);
+        if (ht && /_hair$/.test(n.material.name)) n.material = varMat(n.material, ht); } });
+      if (look.scale) m.scale.setScalar(look.scale);
       if (!compiledOnce) { compiledOnce = true; setTimeout(() => { try { renderer.compile(scene, camera); } catch (e) { } }, 0); }
       const B = {}; m.traverse(n => { if (n.isBone) B[n.name] = n; });
       a.bones = B; a.mixer = new THREE.AnimationMixer(m); a.actions = {};
       for (const k in clips) a.actions[k] = a.mixer.clipAction(clips[k]);
       a.actions.idle.time = Math.random() * 3; a.actions.idle.play(); a.cur = 'idle';
-      body.add(m);
+      body.add(m); a.shown = { model: look.model, body: vt ? look.variant : null, hair: ht ? look.hair : null };
     }).catch(e => console.warn('modèle', look.model, e));
     people.set(id, a); return a;
   }
@@ -507,7 +536,8 @@ export function createClassroom(canvas, opts = {}) {
     if (!a.fast && !a.walking) {
       sph.center.set(a.x, .9, a.z);
       if (!frustum.intersectsSphere(sph) && a.acc < 1) return;          // hors champ : pose mise à jour au plus 1 fois par seconde
-      if ((frameN + a.slot) % (LITE ? 3 : 2)) return;
+      const d2 = (a.x - camera.position.x) ** 2 + (a.z - camera.position.z) ** 2;
+      if (d2 > (LITE ? 16 : 30) && (frameN + a.slot) % (LITE ? 3 : 2)) return;   // de près : chaque image (mouvement fluide en gros plan)
     }
     a.mixer.update(a.acc); a.acc = 0;
     const B = a.bones;
@@ -556,7 +586,7 @@ export function createClassroom(canvas, opts = {}) {
   let snapNext = false;
   function cam(k, snap) { if (!CAMS[k]) return; camKey = k; if (snap) { camPos.set(...CAMS[k][0]); camLook.set(...CAMS[k][1]); } }
 
-  let T = 0;
+  let T = 0, dofAp = 0, dofFocus = 3, dofPrime = 0, labelsOff = false;
   const v3 = new THREE.Vector3();
   function screenPos(id, y = 2.0) {
     const a = people.get(id); if (!a) return null;
@@ -564,7 +594,7 @@ export function createClassroom(canvas, opts = {}) {
     if (v3.z > 1) return null;
     const c = renderer.domElement; return { x: (v3.x + 1) / 2 * c.clientWidth, y: (1 - v3.y) / 2 * c.clientHeight };
   }
-  let composer = null, gtao = null, grade = null, bloom = null, hq = true;
+  let composer = null, gtao = null, grade = null, bloom = null, dof = null, hq = true;
   /* valeurs invalides (NaN, infini) : un seul pixel fautif (normale dégénérée, reflet trop intense) serait étalé par le halo
      sur tout l'écran et donnerait un écran noir pendant quelques images. On les neutralise à l'entrée du halo et en sortie. */
   const SANE = 'vec3 sane( vec3 c ) { return ( any( isnan( c ) ) || any( isinf( c ) ) ) ? vec3( 0. ) : c; }\n';
@@ -579,6 +609,33 @@ export function createClassroom(canvas, opts = {}) {
     if (!hp.fragmentShader.includes(TEX)) throw new Error('filtre du halo inattendu');
     hp.fragmentShader = SANE + hp.fragmentShader.replace(TEX, TEX + ' texel.rgb = min( sane( texel.rgb ), vec3( 24. ) );');
     }
+    /* profondeur de champ des gros plans (comme une vraie caméra) : le personnage net, le fond doucement flou.
+       La profondeur vient du rendu principal (aucun rendu supplémentaire de la scène) ; inactive en plan large. */
+    [composer.renderTarget1, composer.renderTarget2].forEach(rt => { rt.depthTexture = new THREE.DepthTexture(); rt.depthTexture.type = THREE.UnsignedIntType; });
+    dof = new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, res: { value: new THREE.Vector2(800, 450) }, near: { value: camera.near }, far: { value: camera.far }, focus: { value: 3 }, aperture: { value: 0 }, maxCoc: { value: 9 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader: `uniform sampler2D tDiffuse, tDepth; uniform vec2 res; uniform float near, far, focus, aperture, maxCoc; varying vec2 vUv;
+        ${SANE}
+        float viewZ(vec2 uv) { float d = texture2D(tDepth, uv).x; return near * far / (far - d * (far - near)); }
+        float coc(float z) { return clamp(aperture * (z - focus) / z, -maxCoc, maxCoc) * res.y / 1080.; }
+        void main() {
+          vec3 c0 = sane(texture2D(tDiffuse, vUv).rgb); float z0 = viewZ(vUv), r0 = abs(coc(z0));
+          if (r0 < .6) { gl_FragColor = vec4(c0, 1.); return; }
+          vec4 acc = vec4(c0, 1.);
+          for (int i = 0; i < 28; i++) {
+            float t = (float(i) + .5) / 28., r = sqrt(t) * r0, a = float(i) * 2.39996;
+            vec2 o = vec2(cos(a), sin(a)) * r / res, uv = vUv + o;
+            float zs = viewZ(uv), rs = abs(coc(zs));
+            float w = smoothstep(r - 1., r + .5, rs);              // un point net (le personnage) ne bave pas sur le fond flou
+            if (zs > z0 + .05) w *= smoothstep(r - 1., r + .5, r0);  // fond derrière : jamais plus flou que ce pixel
+            acc += vec4(sane(texture2D(tDiffuse, uv).rgb) * w, w);
+          }
+          gl_FragColor = vec4(acc.rgb / acc.a, 1.);
+        }`
+    });
+    { const dr = dof.render.bind(dof); dof.render = (r, w, rb, dt, mask) => { dof.uniforms.tDepth.value = rb.depthTexture; dr(r, w, rb, dt, mask); }; }
+    dof.enabled = false; composer.addPass(dof);
     composer.addPass(new OutputPass());
     grade = new ShaderPass({
       uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(800, 450) }, sharp: { value: .55 } },
@@ -606,7 +663,7 @@ export function createClassroom(canvas, opts = {}) {
   /* changer la taille du canevas l'efface : on l'applique juste avant de dessiner, jamais entre deux images (sinon écran noir) */
   let resPending = true;
   function applyRes() { resPending = true; }
-  function doRes() { resPending = false; const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } }
+  function doRes() { resPending = false; const pr = BASE_PR * rs; renderer.setPixelRatio(pr); renderer.setSize(VW, VH, false); if (composer) { composer.setPixelRatio(pr); composer.setSize(VW, VH); } if (grade) { grade.uniforms.res.value.set(VW * pr, VH * pr); grade.uniforms.sharp.value = .45 + (1 - rs) * .6; } if (dof) dof.uniforms.res.value.set(VW * pr, VH * pr); }
   function resize(w, h) { VW = w; VH = h; applyRes(); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 62 : 48; camera.updateProjectionMatrix(); }
   /* fait avancer les déplacements sans dessiner (rattrapage après une pause) */
   function advance(sec) { if (!(sec > 0)) return; const n = Math.ceil(sec / .1), d = sec / n; for (let i = 0; i < n; i++) { T += d; people.forEach(a => animate(a, d)); } }
@@ -638,7 +695,20 @@ export function createClassroom(canvas, opts = {}) {
     const k = 1 - Math.exp(-dt * (camKey === 'follow' && fol.mode === 'face' ? 6 : 2.2)); camPos.lerp(tp, k); camLook.lerp(tl, k);
     camera.position.copy(camPos); camera.position.x += Math.sin(T * .9) * .012 + Math.sin(T * 2.3) * .004; camera.position.y += Math.sin(T * 1.3) * .01;
     camera.lookAt(camLook);
+    /* gros plans (scène, profs, visage) : pas d'étiquettes de prénoms qui flottent et se chevauchent au fond de l'image */
+    const off = camKey === 'scene' || camKey === 'profs' || (camKey === 'follow' && fol.mode === 'face');
+    if (off !== labelsOff) { labelsOff = off; people.forEach(a => { if (a.label && !a.ring) a.label.visible = !off; }); }
     if (grade) grade.uniforms.time.value = T;
+    if (dof) {
+      let ap = 0, fz = dofFocus;
+      if (camKey === 'follow' && fol.mode === 'face') { const a = people.get(fol.id); if (a) { ap = 12; fz = Math.hypot(a.x - camera.position.x, a.z - camera.position.z, 1.45 - camera.position.y); } }
+      else if (camKey === 'scene') { ap = 6.5; fz = Math.hypot(3.7 - camera.position.x, -4.3 - camera.position.z); }
+      else if (camKey === 'profs') { ap = 4; fz = 3.3; }
+      if (lvl >= 2) ap = 0;                                         // ordinateur qui peine : pas de flou
+      const kf = 1 - Math.exp(-dt * 4); dofAp += (ap - dofAp) * kf; dofFocus += (fz - dofFocus) * kf;
+      dof.uniforms.aperture.value = dofAp; dof.uniforms.focus.value = dofFocus;
+      dof.enabled = dofAp > .15 || dofPrime > 0; if (dofPrime > 0) dofPrime--;   // (amorçage : ouverture nulle, image identique)
+    }
     if (!LITE) { const a = dustG.attributes.position.array; for (let i = 0; i < dustN; i++) { a[i * 3 + 1] += Math.sin(T * .6 + dSeed[i]) * .0009; a[i * 3] += Math.cos(T * .4 + dSeed[i]) * .0006; } dustG.attributes.position.needsUpdate = true; }
     zoneMeshes.forEach(m => { if (m.userData.hi) { const s = 1 + Math.sin(T * 5) * .05; m.scale.set(s, s, 1); } else m.scale.set(1, 1, 1); });
     flagM.rotation.y = Math.sin(T * 3) * .15;
@@ -680,7 +750,7 @@ export function createClassroom(canvas, opts = {}) {
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); });
   }
   const setScale = x => { rs = x; lastL = last = null; cappedL = capped = false; fpsN = 0; fpsT0 = performance.now(); applyRes(); };
-  const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles,
+  const stats = () => ({ fps: Math.round(fps), scale: rs, ao: !!(gtao && gtao.enabled), bloom: !!(bloom && bloom.enabled), dof: !!(dof && dof.enabled), calls: renderer.info.render.calls, tris: renderer.info.render.triangles,
     shadows: renderer.shadowMap.enabled, post: !!(composer && hq), pr: renderer.getPixelRatio(), lite: LITE, lost, restored, programs: renderer.info.programs ? renderer.info.programs.length : 0, textures: renderer.info.memory.textures, sunBaked: roomSunBaked });
-  return { get room() { return roomOn; }, get cams() { return Object.keys(CAMS); }, get progress() { return loadN ? Math.min(1, loadDone / loadN) : 0; }, settled, jump, get view() { return { key: camKey, follow: { ...fol } }; }, setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
+  return { get room() { return roomOn; }, get cams() { return Object.keys(CAMS); }, get progress() { return loadN ? Math.min(1, loadDone / loadN) : 0; }, settled, jump, setLevel: n => { setLevel(n); auto = false; }, get view() { return { key: camKey, follow: { ...fol } }; }, setScale, stats, ready, setQuality, scene, camera, renderer, addPerson, removePerson, moveTo, sitAt, react, talk, place, setVisible, cam, follow, advance, drive, tick, resize, screenPos, setZones, setLine, setFlag, setScreen, people, get T() { return T; } };
 }

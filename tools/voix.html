@@ -49,8 +49,8 @@ li button{min-height:32px;padding:4px 10px;font-size:13px;background:#2a353a;col
   <ol id="list"></ol>
 </main>
 <script type="module">
-import { GAME, LINES, ELEVEN, FIREBASE, voiceSettings, voiceText } from '../config.js?v=22';
-import { allLines, keyFor, spoken } from '../voices.js?v=22';
+import { GAME, LINES, ELEVEN, FIREBASE, voiceSettings, voiceText } from '../config.js?v=23';
+import { allLines, keyFor, spoken } from '../voices.js?v=23';
 const $ = id => document.getElementById(id);
 const DB = FIREBASE.databaseURL.replace(/\/$/, '');
 const lines = allLines(GAME, LINES).map(l => ({ ...l, key: keyFor(l.who, l.text) }));

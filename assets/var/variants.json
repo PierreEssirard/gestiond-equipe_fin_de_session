@@ -1,0 +1,58 @@
+{
+ "ben_a": {
+  "model": "s_ben"
+ },
+ "ben_b": {
+  "model": "s_ben"
+ },
+ "ben_c": {
+  "model": "s_ben"
+ },
+ "ben_d": {
+  "model": "s_ben"
+ },
+ "leo_a": {
+  "model": "s_leonard",
+  "hair": "leonard_cheveux_chatain"
+ },
+ "leo_b": {
+  "model": "s_leonard"
+ },
+ "leo_c": {
+  "model": "s_leonard",
+  "hair": "leonard_cheveux_blond_fonce"
+ },
+ "leo_d": {
+  "model": "s_leonard"
+ },
+ "leo_e": {
+  "model": "s_leonard",
+  "hair": "leonard_cheveux_chatain"
+ },
+ "kate_a": {
+  "model": "s_kate",
+  "hair": "kate_cheveux_brun"
+ },
+ "kate_b": {
+  "model": "s_kate"
+ },
+ "jody_a": {
+  "model": "s_jody"
+ },
+ "jody_b": {
+  "model": "s_jody"
+ },
+ "megan_a": {
+  "model": "s_megan",
+  "hair": "megan_cheveux_auburn"
+ },
+ "megan_b": {
+  "model": "s_megan"
+ },
+ "suzie_a": {
+  "model": "s_suzie"
+ },
+ "suzie_b": {
+  "model": "s_suzie"
+ }
+}

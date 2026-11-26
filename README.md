@@ -17,6 +17,8 @@ L'écran du projecteur montre une salle de classe en 3D. Les élèves scannent u
 | `database.rules.json` | Règles de sécurité Firebase à coller dans la console |
 | `voices.js` | Textes parlés (narrateur, profs) partagés entre le jeu et le script de voix |
 | `tools/generer-voix.mjs` | Génère les voix ElevenLabs dans `voix/` (à lancer sur votre ordinateur) |
+| `avatars.js` | Avatar de chaque joueur : homme ou femme selon le prénom, tenue la moins portée de la classe |
+| `prenoms.js` | Genre le plus probable d'un prénom (généré depuis le fichier des prénoms de l'INSEE) |
 
 ## 1. Répéter tout de suite (sans Firebase)
 
@@ -146,6 +148,24 @@ Vérifiez les chiffres avec le livre de Meier avant la présentation. Les scores
 
 Les personnages (dossier `assets/`) sont des modèles humains de type Mixamo (Adobe), repris du dépôt public [4-Impact/inequality-simulator](https://github.com/4-Impact/inequality-simulator), puis compressés pour le web (textures 1024 px, environ 1 Mo par personnage). Les animations disponibles sont : attente, marche, déception et célébration. La position assise est calculée par le jeu.
 
+### Avatars des joueurs : homme ou femme selon le prénom
+
+Quand un élève tape son prénom, le téléphone propose aussitôt l'avatar **Homme** ou **Femme**
+(« Mélanie » → Femme, « Pier-Luc » → Homme). Un appui sur l'autre bouton corrige ; pour un prénom mixte
+(Dominique, Charlie, Sasha…) ou inconnu, rien n'est coché et le joueur choisit (sinon, un avatar au hasard).
+Le genre vient de `prenoms.js`, construit par `tools/prenoms/build.py` à partir du
+[Fichier des prénoms de l'INSEE](https://www.insee.fr/fr/statistiques/2540004) (naissances depuis 1955,
+Licence Ouverte) : 16 000 prénoms, plus les prénoms composés et quelques prénoms québécois (Marie-Pier,
+Pier-Luc, Andréanne…) ; pour un prénom absent, sa terminaison décide quand elle est nettement marquée.
+
+Chaque joueur reçoit la tenue **la moins portée** de la classe : 9 tenues d'homme et 12 de femme
+(couleurs de hauts et de pantalons, teints de peau, cheveux châtains, blonds, bruns ou auburn), donc pas de
+jumeaux avant 21 joueurs. Les hommes ne portent jamais la tenue de Klaus ou de Mike (mêmes personnages).
+La tenue est enregistrée avec le joueur : le projecteur et les téléphones montrent exactement le même personnage.
+Les tenues sont des variantes de texture (`assets/var/`, version allégée `_m` pour les téléphones),
+recolorées vêtement par vêtement en gardant plis et coutures, par `tools/avatars/variants.py`
+(même maillage, même shader : aucune recompilation quand un joueur arrive).
+
 ### Avatars des profs (ressemblance)
 
 Philippe et Mélanie ont leur propre visage : la photo est projetée sur la tête 3D depuis une caméra
@@ -170,6 +190,17 @@ coins plus sombres. Le résultat est débruité (OpenImageDenoise) et stocké da
 Seul le soleil direct reste calculé en temps réel, pour les ombres mobiles des personnages.
 Les personnages sont éclairés par une capture à 360° de la salle elle-même.
 C'est plus réaliste **et** plus léger pour l'ordinateur que l'ancien éclairage (9 lampes en temps réel + occlusion).
+
+Rendu des personnages et de la caméra :
+- **matières** : la texture de brillance de chaque personnage règle la rugosité zone par zone (peau satinée,
+  yeux et lèvres humides, cuir brillant, tissus mats) au lieu d'une valeur unique pour tout le corps ;
+- **cheveux et cils** : bords de mèches adoucis par l'anticrénelage (alpha-to-coverage) ;
+- **profondeur de champ** en gros plan (cri de Philippe, YOUHOU, scène de Klaus et Mike, profs) : le
+  personnage reste net, le fond se floute doucement, comme avec une vraie caméra ; aucun flou en plan large,
+  et le flou se coupe tout seul si l'ordinateur peine ;
+- pas d'étiquettes de prénoms qui flottent au fond des gros plans ;
+- **fluidité** : les personnages proches de la caméra sont animés à chaque image ; le chrono, l'horloge et
+  les bulles ne réécrivent la page que lorsqu'ils changent (bulles déplacées par la carte graphique).
 
 - Si la salle réaliste ne se charge pas, le jeu affiche automatiquement l'ancienne salle simplifiée.
 - Pour forcer la salle simplifiée sur un ordinateur faible : ajoutez `&room=0` à l'adresse
@@ -215,10 +246,10 @@ fluide, décalage de 0,15 à 0,5 s. Si le projecteur est rechargé, les téléph
 
 ```bash
 npm install          # une seule fois
-npm test             # règles du jeu, points, configuration, voix (2 secondes)
-npm run e2e          # vraie partie : projecteur + 2 téléphones dans Chrome/Edge (1 à 3 minutes)
+npm test             # règles du jeu, points, configuration, voix, prénoms → avatars (2 secondes)
+npm run e2e          # vraie partie : projecteur + 2 téléphones (avatars homme/femme, Babillage…) dans Chrome/Edge
 npm run e2e:jeu      # partie complète jouée depuis 2 téléphones : chaque type d'activité, points, résultat final
-npm run e2e:rendu    # rendu 3D : pas d'écran noir, perte du contexte WebGL, téléphone léger, décor de secours
+npm run e2e:rendu    # rendu 3D : pas d'écran noir, perte du contexte WebGL, flou des gros plans, tenues sans recompilation, téléphone léger
 npm run check        # tout ce qui précède
 npm run voix:check   # en ligne : chaque réplique a sa voix, dans Firebase ou dans voix/ (lecture seule)
 ```
