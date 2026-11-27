@@ -669,6 +669,9 @@ export function createClassroom(canvas, opts = {}) {
   function advance(sec) { if (!(sec > 0)) return; const n = Math.ceil(sec / .1), d = sec / n; for (let i = 0; i < n; i++) { T += d; people.forEach(a => animate(a, d)); } }
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), sph = new THREE.Sphere(new THREE.Vector3(), 1.3);
   function tick(dt) {
+    /* pas de temps négatif : l'horodatage de la première image peut précéder la mise en route (fil principal occupé
+       par le chargement) ; un pas négatif rendait le lissage de la caméra divergent et l'envoyait à des kilomètres */
+    dt = dt > 0 ? Math.min(dt, .1) : 0;
     if (lost) return;
     { const now = performance.now(), fdt = now - lastFrame; lastFrame = now;          // images régulières : l'écran d'attente peut disparaître
       if (readyAt && settleRes) { settleN = fdt < 45 ? settleN + 1 : 0; if (settleN >= 12 || now - readyAt > 7000) { settleRes(true); settleRes = null; } } }

@@ -75,12 +75,25 @@ export const GAME = {
           q: 'Face à Mike, quel mode de Thomas-Kilmann Klaus adopte-t-il ?', opts: ['La compétition', 'La collaboration', 'L’évitement', 'L’accommodation'], ok: 2, t: 20,
           why: 'L’évitement : ni ses intérêts ni ceux de Mike ne sont traités. Le conflit est reporté, pas réglé.' }
       ] },
-    { type: 'fusion', name: 'La fusion', bloc: 'Cas fil rouge · Daimler-Chrysler',
-      rule: 'Tout le monde vote. La fusion réussit seulement si Stuttgart et Detroit choisissent la même réponse, et la bonne. Parlez-vous !',
+    /* Fusion à l'aveugle : tout le monde se lève. Chaque téléphone donne une consigne secrète (play : à jouer en discutant,
+       find : qui chercher). Le binôme est quelqu'un de l'autre équipe qui a la même consigne, donc le comportement opposé.
+       Indice 0 = Stuttgart (Daimler, Allemagne), 1 = Detroit (Chrysler, États-Unis). Pour changer le contenu, modifiez cards. */
+    { type: 'match', name: 'La fusion à l’aveugle', bloc: 'Cas fil rouge · Daimler-Chrysler',
+      rule: 'Tout le monde se lève ! Votre téléphone vous donne une consigne secrète : jouez-la en discutant, sans la dire. Trouvez quelqu’un de l’autre équipe qui joue l’opposé, puis entrez son prénom. Vous avez 60 secondes.',
       qs: [
-        { q: 'Daimler-Chrysler : « fusion entre égaux » de 36 G$ en 1998, revendue 7,4 G$ en 2007. Quelle leçon en tirer ?',
-          opts: ['Le problème était seulement financier', 'L’intégration culturelle a été négligée', 'Les cultures nationales n’ont aucun effet', 'Il fallait fusionner encore plus vite'], ok: 1, t: 45,
-          why: 'Une culture formelle et hiérarchique, une autre informelle et rapide, jamais intégrées : ce n’était pas une fusion entre égaux.' }
+        { q: 'Levez-vous et trouvez votre miroir culturel dans l’autre équipe !', t: 60,
+          cards: [
+            { dim: 'Contrôle de l’incertitude', score: 'Allemagne 65 · États-Unis 46', short: ['tout planifier', 'tout improviser'],
+              play: ['Vous voulez tout planifier : demandez l’ordre du jour, l’heure exacte, les règles.', 'Vous improvisez tout : « On verra bien ! », « On teste et on corrige ! »'],
+              find: ['quelqu’un de Detroit qui improvise tout', 'quelqu’un de Stuttgart qui veut tout planifier'] },
+            { dim: 'Individualisme', score: 'Allemagne 67 · États-Unis 91', short: ['« nous »', '« moi, je »'],
+              play: ['Vous parlez toujours au « nous » : votre équipe, votre service, vos collègues.', 'Vous ne parlez que de vous : « Moi, je… », vos réussites, vos projets.'],
+              find: ['quelqu’un de Detroit qui ne parle que de lui', 'quelqu’un de Stuttgart qui parle toujours au « nous »'] },
+            { dim: 'Style de management (Daimler-Chrysler)', score: 'Daimler formel · Chrysler informel', short: ['très formel', 'très décontracté'],
+              play: ['Vous êtes très formel : « Guten Tag », poignée de main, vouvoiement, « Monsieur le directeur ».', 'Vous êtes très décontracté : « Hey ! », tape dans la main, tutoiement, prénoms.'],
+              find: ['quelqu’un de Detroit très décontracté', 'quelqu’un de Stuttgart très formel'] }
+          ],
+          why: 'Chaque consigne était une vraie différence entre l’Allemagne et les États-Unis. Pour fusionner, il faut d’abord reconnaître la culture de l’autre au lieu de la juger : Daimler et Chrysler ne l’ont jamais fait.' }
       ] }
   ],
   takeaways: [
@@ -152,12 +165,14 @@ export const LINES = {
     line: [['M', 'Une estimation, ça se justifie. Pensez aux scores d’Hofstede vus en classe.'], ['P', 'Tabarouette, des chiffres ! Si vous n’avez aucune idée, visez le milieu. Ça marche rarement.'], ['M', 'Ha ha ! Ne l’écoutez pas. Fiez-vous plutôt à votre cours.']],
     standsit: [['P', 'Vrai ou faux. Simple, rapide, sans appel.'], ['M', 'Lisez bien la phrase : un seul mot peut tout changer.']],
     race: [['M', 'Observez bien la scène. Un conflit mal nommé est un conflit qui revient.'], ['P', 'Tabarouette, une course ! Soyez rapides : ici, la vitesse compte aussi.']],
-    fusion: [['P', 'Dernière épreuve. Stuttgart et Detroit doivent s’entendre sur une seule réponse.'], ['M', 'Parlez-vous. C’est tout le sujet de la présentation.']]
+    match: [['P', 'Dernière épreuve : tout le monde debout. Tabarouette, ça va bouger !'], ['M', 'Lisez bien votre consigne secrète, et écoutez comment les autres parlent : c’est là qu’est l’indice.']]
   },
   /* pendant la première question de la ligne (des chiffres qu'on pourrait chercher en ligne) */
   claude: [['P', 'Je vois des téléphones qui chauffent… CréH, arrête d’utiliser Claude !'], ['M', 'Ha ha ha ! Il vous a à l’œil, je vous préviens.']],
-  /* pendant la question de la fusion */
-  waitFusion: [['P', 'Stuttgart, Detroit : parlez-vous ! C’est maintenant ou jamais.'], ['M', 'Et écoutez vraiment l’autre équipe. Toute la fusion se joue là.']],
+  /* fusion à l'aveugle : à 30 et 10 secondes de la fin, puis à l'alarme (Philippe crie, en gros plan) */
+  waitMatch: [['P', 'Plus que trente secondes ! Trouvez votre miroir dans l’autre équipe !']],
+  tenSec: [['N', 'Dix secondes !']],
+  sitDown: [['P', 'Tout le monde s’assoit !', 'sit']],
   /* pendant les questions, une fois la question lue (sans changer de caméra) */
   waiting: [
     [['P', 'Allez, on se décide. Même un comité allemand aurait déjà voté.'], ['M', 'Ha ! Pas sûr. Il leur faudrait d’abord un rapport de quatre-vingts pages.']],
@@ -213,8 +228,10 @@ export const LINES = {
     [['M', 'Personne ? Vérifiez votre connexion, on continue.'], ['P', 'Ou réveillez votre voisin. Gentiment.']]
   ],
   raceWin: [['P', 'Tabarouette, regardez-moi ça courir ! On se croirait aux Jeux olympiques.'], ['M', 'Ha ! C’est bien la première fois qu’on court vers le tableau dans mon cours.']],
-  fusionOk: [['M', 'Fusion réussie. Vous avez intégré vos deux cultures, mieux que Daimler-Chrysler.'], ['P', 'Tabarouette. Je suis presque ému.'], ['M', 'Ha ! Il est ému. Notez la date.']],
-  fusionKo: [['P', 'Tabarouette… Fusion ratée. Comme en 2007, finalement.'], ['M', 'Deux cultures, deux réponses : c’est exactement le cas qu’on vient d’étudier.']],
+  /* bilan de la fusion à l'aveugle (part des joueurs qui ont trouvé leur binôme : 70 % et plus, 35 % et plus, moins) */
+  matchGreat: [['P', 'Tabarouette ! Vous avez fusionné mieux que Daimler et Chrysler en neuf ans.'], ['M', 'Ha ha ! Parce que vous avez écouté l’autre avant de le juger. C’est toute la leçon.']],
+  matchMid: [['P', 'Tabarouette, la moitié de la fusion est faite. C’est déjà plus que Daimler-Chrysler.'], ['M', 'Ha ! Décoder la culture de l’autre, ça s’apprend. Et ça prend plus que soixante secondes.']],
+  matchBad: [['P', 'Tabarouette… On dirait la première réunion entre Stuttgart et Detroit.'], ['M', 'Ha ha ! Exactement : sans décoder la culture de l’autre, la fusion échoue.']],
   /* bouton « Babillage » du projecteur : Philippe interrompt la classe (ou la personne qui parle) */
   babil: [['P', 'Babillage !']],
   final: [['M', 'Bravo à tous. Une belle démonstration de ce que la diversité apporte quand elle est bien gérée.'], ['P', 'Sont vilains étudiants… mais ce sont mes vilains étudiants préférés.'], ['M', 'Ha ha ! Il ne le dira qu’une fois. Merci à l’équipe Charlie !']]

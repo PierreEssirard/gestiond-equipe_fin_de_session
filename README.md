@@ -111,16 +111,19 @@ dès le chargement : il part sans délai.
 
 Un narrateur lit les consignes, les questions et les réponses, puis les profs commentent. Klaus et Mike jouent leur scène à voix haute.
 
-**Voix humaines ElevenLabs (déjà en place).** Les 95 répliques ont été générées avec ElevenLabs et sont stockées dans la base Firebase (branche `voix`, en lecture seule). Le jeu les charge au démarrage. La clé API n'est stockée nulle part.
+**Voix humaines ElevenLabs.** Les répliques sont générées avec ElevenLabs et stockées dans la base Firebase (branche `voix`, en lecture seule) ou dans le dossier `voix/` du dépôt. Le jeu les charge au démarrage ; une réplique sans clip est lue par la synthèse vocale du navigateur. La clé API n'est stockée nulle part.
 
 Pour régénérer après avoir modifié un texte ou une voix dans `config.js` :
 1. Dans la console Firebase, onglet **Règles**, passez `voix` en `".write": true` et publiez.
 2. Ouvrez `https://VOTRE-COMPTE.github.io/VOTRE-DEPOT/tools/voix.html`, collez une clé API ElevenLabs (permission *Text to Speech*) et cliquez sur **Générer les voix manquantes**. Cochez *Tout régénérer* si vous avez changé de voix.
 3. Remettez `voix` en `".write": false`.
 
-Alternative hors ligne : `node tools/generer-voix.mjs` génère les mêmes fichiers dans `voix/` (voir l'en-tête du script).
-
-Si vous modifiez une question ou une réplique dans `config.js`, relancez le script : il ne génère que les nouvelles répliques. Pour changer de voix, ajoutez `--force` pour tout régénérer. `node tools/generer-voix.mjs --dry` affiche le nombre de caractères sans rien générer.
+Sans toucher aux règles Firebase : depuis le dossier du dépôt sur votre ordinateur, lancez
+`ELEVENLABS_API_KEY=votre_clé node tools/generer-voix.mjs` (PowerShell : `$env:ELEVENLABS_API_KEY="votre_clé"; node tools/generer-voix.mjs`),
+puis `git add voix && git commit -m "Voix" && git push`. Le script ne génère que les répliques qui n'ont de voix
+ni dans `voix/` ni dans Firebase, en commençant par les plus importantes. Si les crédits ElevenLabs s'épuisent, il s'arrête
+et garde ce qui est fait. `node tools/generer-voix.mjs --dry` liste les répliques manquantes et le nombre de caractères
+sans rien générer ; `--force` régénère tout (changement de voix).
 
 **Sans fichiers ElevenLabs**, le jeu utilise la synthèse vocale du navigateur. Dans ce cas, préférez Microsoft Edge, qui propose des voix naturelles en français du Canada (*Sylvie*, *Antoine*…).
 
@@ -134,14 +137,29 @@ Les navigateurs bloquent le son tant qu'on n'a pas cliqué sur la page : cliquez
 | 2 | La ligne humaine | A · Hofstede | Curseur 0-100, l'avatar se place sur la ligne |
 | 3 | Vrai ou faux | B · Diversité et conflits | Vrai = l'avatar se lève, faux = il reste assis |
 | 4 | La course au tableau | C et D · Négociation, communication | Scène Klaus contre Mike, puis la réponse la plus rapide gagne. Les premiers de chaque équipe courent au tableau |
-| 5 | La fusion | Cas Daimler-Chrysler | Les deux équipes doivent voter la même bonne réponse |
+| 5 | La fusion à l'aveugle | Cas fil rouge · Daimler-Chrysler | Tout le monde se lève. Chaque téléphone donne une consigne secrète à jouer ; on cherche dans l'autre équipe la personne qui joue l'opposé, puis on entre son prénom. 60 secondes, alarme, « Tout le monde s'assoit ! », bilan en % de binômes formés |
 
-**Points** : bonne réponse 100 + bonus de vitesse jusqu'à 50 · ligne humaine : jusqu'à 150 selon l'écart · course : +50 au premier de chaque équipe · fusion réussie : 150 pour tous.
+**Points** : bonne réponse 100 + bonus de vitesse jusqu'à 50 · ligne humaine : jusqu'à 150 selon l'écart · course : +50 au premier de chaque équipe · fusion à l'aveugle : 100 par binôme formé, + jusqu'à 50 pour les premiers binômes.
 Le score d'équipe est la **moyenne** par joueur, pour que des équipes de tailles différentes restent comparables.
 
 ## 6. Modifier le contenu
 
 Tout se trouve dans `config.js` : questions, explications, durées (`t`, en secondes) et répliques des profs, classées par situation (`great`, `mid`, `bad`, `none`, `retort`…).
+
+### La fusion à l'aveugle
+
+1. Philippe et Mélanie lisent la consigne, puis le présentateur la répète à l'oral et la classe se lève.
+2. Chaque téléphone affiche une **consigne secrète** : une attitude à jouer en discutant, sans la dire (« Vous voulez tout planifier… »). Il indique aussi qui chercher dans l'autre équipe (« quelqu'un de Detroit qui improvise tout »).
+3. On tape les premières lettres du prénom de la personne trouvée, puis on la touche dans la liste.
+4. Le projecteur valide. Un binôme est juste quand les deux personnes sont d'équipes différentes et ont reçu la même consigne, vue de chaque côté. Sinon, le téléphone dit pourquoi (« pas la même consigne », « déjà en binôme ») et bloque 3 secondes.
+5. Les binômes formés vont se serrer la main au fond de la salle 3D.
+6. Au bout de 60 secondes, l'alarme sonne et Philippe crie « Tout le monde s'assoit ! ». Le jeu s'arrête aussi plus tôt si tout le monde a trouvé. Le bilan affiche le pourcentage de la classe qui a trouvé son miroir culturel.
+
+Pour changer le contenu, modifiez la liste `cards` de l'activité `match` dans `config.js`. Chaque consigne a :
+- `dim` (la dimension) et `score` (les chiffres affichés au bilan) ;
+- `play` (ce qu'on joue), `find` (qui chercher) et `short` (le résumé du bilan), chacun en deux versions : indice 0 pour Stuttgart (Daimler), indice 1 pour Detroit (Chrysler).
+
+Deux consignes au minimum, autant qu'on veut : elles sont réparties à parts égales dans chaque équipe. Le texte `why` est la conclusion lue au bilan.
 Vérifiez les chiffres avec le livre de Meier avant la présentation. Les scores d'Hofstede utilisés sont les scores classiques (France : distance hiérarchique 68, contrôle de l'incertitude 86 ; États-Unis : individualisme 91 ; Allemagne : 35 / 65 / 67).
 
 ## 7. Personnages 3D

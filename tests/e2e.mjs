@@ -87,6 +87,16 @@ try {
     const [h, a] = [await pos(host), await pos(A)];
     for (let i = 0; i < 2; i++) { if (!h[i] || !a[i]) throw new Error('avatar manquant'); const d = Math.hypot(h[i][0] - a[i][0], h[i][1] - a[i][1]); if (d > .03) throw new Error(`écart de ${d.toFixed(2)} m`); }
   });
+  await check('la caméra du téléphone est dans la salle dès le chargement, même si une image arrive horodatée dans le passé', async () => {
+    const r = await A.evaluate(() => {
+      const R = __phone.R, c = R.camera.position, inside = p => Math.abs(p.x) < 7.6 && p.z < 6.3 && p.z > -6.2 && p.y > 0 && p.y < 4;
+      const first = { x: c.x, y: c.y, z: c.z };
+      R.tick(-3); R.tick(-.4);            // fil principal occupé au démarrage : la première image peut précéder l'horloge
+      return { first, ok1: inside(first), ok2: inside(c), now: [c.x, c.z].map(v => v.toFixed(1)).join(',') };
+    });
+    if (!r.ok1) throw new Error(`caméra hors de la salle au chargement : ${JSON.stringify(r.first)}`);
+    if (!r.ok2) throw new Error(`pas de temps négatif : caméra partie en ${r.now}`);
+  });
   await check('la caméra du téléphone reste dans la salle (pas d’écran jaune)', async () => {
     const out = await B.evaluate(() => {
       const R = __phone.R, a = R.people.get('pB'), bad = [];

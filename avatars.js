@@ -1,8 +1,8 @@
 /* Avatars des joueurs : un personnage 3D et une tenue, homme ou femme selon le prénom (ou le choix du joueur).
    Les tenues sont des variantes de texture des mêmes personnages (tools/avatars/variants.py) : même maillage,
    même shader, donc aucune recompilation quand un joueur arrive. Partagé par le projecteur et les téléphones. */
-import { genreDuPrenom } from './prenoms.js?v=23';
-import { hash } from './logic.js?v=23';
+import { genreDuPrenom } from './prenoms.js?v=24';
+import { hash } from './logic.js?v=24';
 
 /* clé → [modèle, texture du corps (assets/var), texture des cheveux] ; sans texture : tenue d'origine.
    Les hommes ne portent jamais la tenue d'origine de Ben et Leonard : ce sont Mike et Klaus dans la scène. */

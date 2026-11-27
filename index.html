@@ -82,6 +82,12 @@ body.withjoin #lower{right:340px}
 .stat small{color:var(--mut);font-weight:600;font-size:14px}
 .stat strong{font:700 clamp(22px,1.8vw,32px)/1.1 "Barlow Condensed",sans-serif}
 .meter{height:10px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden;width:min(40vw,520px)}
+.pairs{display:flex;flex-wrap:wrap;gap:6px;flex:1}
+.pair{padding:5px 11px;border-radius:99px;background:rgba(47,179,106,.2);border:1px solid rgba(47,179,106,.55);font-weight:700;font-size:clamp(14px,1.05vw,18px);animation:pin .5s ease-out}
+@keyframes pin{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+.dims{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.dims div{background:rgba(255,255,255,.06);border-radius:10px;padding:9px 13px;display:flex;flex-direction:column;gap:2px}
+.dims b{font-size:clamp(15px,1.15vw,20px)}.dims span{color:var(--acc);font-weight:700;font-size:clamp(13px,.95vw,16px)}.dims em{font-style:normal;color:#c9d2d6;font-size:clamp(13px,.95vw,16px)}
 .meter i{display:block;height:100%;background:var(--acc);transition:width .4s}
 #board{position:fixed;right:24px;top:120px;width:min(26vw,360px);padding:14px 16px;display:none}
 #board.on{display:block}
@@ -156,12 +162,12 @@ button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=23';
-import { connect } from './net.js?v=23';
-import { keyFor, spoken, NARR } from './voices.js?v=23';
-import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson } from './logic.js?v=23';
-import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=23';
-import { LOOK, genreDe, choisirTenue, tenue } from './avatars.js?v=23';
+import { GAME, PROFS, LINES, FIREBASE } from './config.js?v=24';
+import { connect } from './net.js?v=24';
+import { keyFor, spoken, NARR } from './voices.js?v=24';
+import { newGameId, answerKey, allAnswered, scoreRound, freeSpot, finalSpots, packPerson, dealCards, cardForLate, matchCheck, pairsLeft, matchScore } from './logic.js?v=24';
+import { createClassroom, SEATS, ZONES, LINE_Z, lineX, DOOR } from './scene.js?v=24';
+import { LOOK, genreDe, choisirTenue, tenue } from './avatars.js?v=24';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -247,6 +253,7 @@ function syncAvatars() {
     /* place et tenue enregistrées avec le joueur (après coup : Firebase peut rappeler syncAvatars aussitôt) */
     const upd = {}; if ((p.seat ?? null) !== seat) upd.seat = seat; if (p.look !== look) upd.look = look;
     if (Object.keys(upd).length) net.setPlayer(pid, upd);
+    if (S.match && S.phase === 'open' && cur().k === 'q' && act().type === 'match' && !(pid in S.match.cards)) { S.match.cards[pid] = cardForLate(S.match.cards, teamOf, team, S.match.n); queueMicrotask(publish); }
   }
   for (const pid of [...avatars.keys()]) if (!players[pid]) { const a = avatars.get(pid); if (a.seat !== null) seatTaken.delete(a.seat); avatars.delete(pid); R.removePerson(pid); }
 }
@@ -275,7 +282,8 @@ let spotTaken = [...PROF_SPOTS];
 function publish(extra = {}) {
   const st = cur(), o = { gid: S.gid, step: S.step, kind: st.k, phase: S.phase || null, key: KEY(), teams: GAME.teams.map(t => t.name), v: Date.now() };
   if (st.ai !== undefined) { const a = act(); o.act = { i: st.ai, n: GAME.acts.length, name: a.name, rule: a.rule, type: a.type }; }
-  if (st.k === 'q') { const q = qq(); o.q = { text: q.q, opts: q.opts || null, t: q.t, idx: st.qi, n: act().qs.length, type: act().type }; if (S.phase === 'reveal') o.reveal = { ok: q.ok ?? null, val: q.val ?? null, why: q.why }; }
+  if (st.k === 'q') { const q = qq(); o.q = { text: q.q, opts: q.opts || null, t: q.t, idx: st.qi, n: act().qs.length, type: act().type }; if (S.phase === 'reveal') o.reveal = { ok: q.ok ?? null, val: q.val ?? null, why: q.why };
+    if (act().type === 'match' && S.match) o.match = { cards: S.match.cards, pairs: S.match.pairs.map(p => [p[0], p[1]]), miss: S.match.miss }; }
   net.setState(Object.assign(o, extra));
 }
 
@@ -303,18 +311,18 @@ function enter() {
     const a = act(); setCam('wide'); avatars.forEach((x, pid) => goHome(pid, Math.random() * .8));
     banner(a.name, `Activité ${st.ai + 1} sur ${GAME.acts.length} · ${a.bloc}`, 2600);
     R.setScreen({ top: `Activité ${st.ai + 1} · ${a.name}`, main: a.rule, foot: 'Rejoindre : code ' + ROOM });
-    if (a.type === 'corners' || a.type === 'fusion') R.setZones(true);
+    if (a.type === 'corners') R.setZones(true);
     if (a.type === 'line') R.setLine(true);
     const l = LINES.intro[a.type]; later(1200, () => { if (cur() !== st) return; narrate(NARR.intro(st.ai, a)); if (l) say(l); });
   }
   if (st.k === 'q') {
     const a = act(), q = qq();
-    R.setScreen({ top: `${a.name} · question ${st.qi + 1}`, main: q.q, foot: 'Répondez sur votre téléphone · code ' + ROOM });
+    R.setScreen({ top: a.type === 'match' ? a.name : `${a.name} · question ${st.qi + 1}`, main: q.q, foot: a.type === 'match' ? 'Entrez le prénom de votre binôme sur votre téléphone' : 'Répondez sur votre téléphone · code ' + ROOM });
     unsubA = net.onAnswers(KEY(), onAnswers);
     if (a.type === 'corners') { R.setZones(true); setCam('wide'); }
     if (a.type === 'line') { R.setLine(true); setCam('line'); }
     if (a.type === 'standsit') { setCam('wide'); avatars.forEach((x, pid) => goHome(pid)); }
-    if (a.type === 'fusion') { R.setZones(true); setCam('wide'); const crowd = [...PROF_SPOTS]; [...avatars.keys()].sort().forEach((pid, i) => { const c = freeSpot({ x: 0, z: -4.1 }, crowd); crowd.push(c); R.moveTo(pid, c.x, c.z, { face: 0, delay: (i % 8) * .12 }); }); }
+    if (a.type === 'match') setCam('wide');
     if (a.type === 'race') { playScene(q.scene); return; }
     openQ();
   }
@@ -329,16 +337,18 @@ function enter() {
   }
 }
 function openQ() {
-  const q = qq(), a = act(), st = cur(); S.phase = 'open'; startTimer(q.t || 20); publish(); render();
+  const q = qq(), a = act(), st = cur(); S.phase = 'open';
+  if (a.type === 'match') startMatch();
+  startTimer(q.t || 20); publish(); render();
   hush(); narrate(NARR.question(a, q));
   if (bots.length) scheduleBots();
+  if (a.type === 'match') return;      // fusion à l'aveugle : remarques à 30 et 10 secondes de la fin (voir frame)
   /* une fois la question lue : une remarque des profs (sous-titrée, sans changer de caméra) */
   const t = q.t || 20;
   later(Math.min(Math.max(7, t * .42), t - 6) * 1000, () => {
     if (cur() !== st || S.phase !== 'open') return;
     let ex = null;
-    if (a.type === 'fusion') ex = LINES.waitFusion;
-    else if (a.type === 'line' && !S.claudeSaid && !claudeQueued) { claudeQueued = true; ex = LINES.claude; }
+    if (a.type === 'line' && !S.claudeSaid && !claudeQueued) { claudeQueued = true; ex = LINES.claude; }
     else ex = draw('waiting', true);
     if (ex) say(ex);
   });
@@ -370,45 +380,122 @@ function onAnswers(v) {
   const prev = answers; answers = v || {};
   if (cur().k !== 'q') return;
   const type = act().type;
+  if (type === 'match') return matchAnswers();
   const fresh = Object.entries(answers).filter(([pid, a]) => !(prev[pid] && prev[pid].v === a.v) && avatars.has(pid)).sort((x, y) => (x[1].t || 0) - (y[1].t || 0));
   for (const [pid, a] of fresh) {
-    if (type === 'corners' || type === 'fusion') { const z = freeSpot(ZONES[a.v] || ZONES[0], spotTaken); spotTaken.push(z); R.moveTo(pid, z.x, z.z, { face: Math.atan2(-z.x, -z.z) }); }
+    if (type === 'corners') { const z = freeSpot(ZONES[a.v] || ZONES[0], spotTaken); spotTaken.push(z); R.moveTo(pid, z.x, z.z, { face: Math.atan2(-z.x, -z.z) }); }
     if (type === 'line') { const l = freeSpot({ x: lineX(+a.v), z: LINE_Z }, spotTaken, { wx: 3 }); spotTaken.push(l); R.moveTo(pid, l.x, l.z, { face: Math.PI }); }
     if (type === 'standsit') { const s = homeOf(pid); if (a.v === true) R.moveTo(pid, s.x, s.z + .42, { direct: true, face: Math.PI }); }
   }
   render();
   if (S.phase === 'open' && allAnswered(answers, players)) closeQ();
 }
-function closeQ() { if (S.phase !== 'open') return; S.phase = 'closed'; clearTimer(); publish(); render(); }
+function closeQ() { if (S.phase !== 'open') return; if (cur().k === 'q' && act().type === 'match') return endMatch(); S.phase = 'closed'; clearTimer(); publish(); render(); }
+
+/* ---------- La fusion à l'aveugle ----------
+   Tout le monde se lève ; chaque téléphone affiche une consigne secrète. On cherche dans l'autre équipe quelqu'un qui a
+   la même consigne (le comportement opposé) et on entre son prénom. Le projecteur valide, compte les binômes,
+   puis, au bout du temps (ou quand plus aucun binôme n'est possible) : alarme, « Tout le monde s'assoit ! », bilan. */
+const teamOf = pid => players[pid] && players[pid].team ? 1 : 0;
+function startMatch() {
+  const q = qq(), n = q.cards.length;
+  S.match = { cards: dealCards(plist().map(p => ({ pid: p.id, team: p.team })), n, S.gid), paired: {}, pairs: [], miss: {}, seen: {}, n, w30: false, w10: false };
+  /* tout le monde se lève : les avatars se rassemblent devant le tableau */
+  const crowd = [...PROF_SPOTS]; spotTaken = crowd;
+  [...avatars.keys()].sort().forEach((pid, i) => { const c = freeSpot({ x: 0, z: -3.9 }, crowd); crowd.push(c); R.moveTo(pid, c.x, c.z, { face: (hash(pid) % 628) / 100 - 3.14, delay: (i % 8) * .12 }); });
+}
+function matchAnswers() {
+  const M = S.match; if (!M) return;
+  const fresh = Object.entries(answers).filter(([pid, x]) => x && x.t && x.t > (M.seen[pid] || 0)).sort((a, b) => a[1].t - b[1].t);
+  fresh.forEach(([pid, x]) => { M.seen[pid] = x.t; matchAttempt(pid, x.v); });
+  if (fresh.length) { publish(); render(); }
+}
+function matchAttempt(pid, target) {
+  const M = S.match; if (!M || S.phase !== 'open' || !players[pid]) return;
+  [pid, target].forEach(p => { if (p && players[p] && players[p].name && !(p in M.cards)) M.cards[p] = cardForLate(M.cards, teamOf, teamOf(p), M.n); });
+  const r = matchCheck(M, teamOf, pid, target);
+  if (r === 'ok') {
+    M.paired[pid] = target; M.paired[target] = pid; M.pairs.push([pid, target, Date.now()]); delete M.miss[pid]; delete M.miss[target];
+    pairUp(pid, target, M.pairs.length - 1);
+    if (pairsLeft(M, teamOf, M.n) === 0) later(1200, endMatch);        // plus personne à trouver : on termine tout de suite
+  } else if (r !== 'deja') M.miss[pid] = { t: Date.now(), why: r, to: target || null };
+}
+/* un binôme formé : les deux avatars vont se serrer la main au fond de la salle */
+function pairUp(a, b, i) {
+  const row = Math.min(1, Math.floor(i / 11)), x = 4.6 - (i % 11) * .92, z = LINE_Z - .2 - row * .85;
+  R.moveTo(a, x - .3, z, { face: Math.PI / 2 }); R.moveTo(b, x + .3, z, { face: -Math.PI / 2 });
+  setTimeout(() => { R.react(a, 'cheer', 2.5); R.react(b, 'cheer', 2.5); }, 2400);
+}
+function endMatch() {
+  if (S.phase !== 'open' || cur().k !== 'q' || act().type !== 'match') return;
+  S.phase = 'closed'; clearTimer(); stopBots(); hush(); publish(); render();
+  alarm();
+  avatars.forEach((x, pid) => goHome(pid, .5 + Math.random() * 1.2));          // tout le monde retourne s'asseoir
+  later(1400, () => say(LINES.sitDown));
+  const st = S.step, t0 = performance.now();
+  const check = () => {
+    if (S.step !== st || S.phase !== 'closed') return;
+    if (performance.now() - t0 > 3300 && !saying && !sayQ.length && !babilOn) reveal(); else setTimeout(check, 250);
+  };
+  setTimeout(check, 1500);
+}
+/* alarme de fin : sirène deux tons, synthétisée (aucun fichier à charger) */
+function alarm() {
+  if (!S.sound || !window.__actx) return;
+  try {
+    const c = __actx, t0 = c.currentTime + .03, g = c.createGain(), o = c.createOscillator(), o2 = c.createOscillator();
+    o.type = 'square'; o2.type = 'sawtooth'; o2.detune.value = 8; o.connect(g); o2.connect(g); g.connect(c.destination);
+    for (let i = 0; i < 6; i++) { const f = i % 2 ? 660 : 880; o.frequency.setValueAtTime(f, t0 + i * .24); o2.frequency.setValueAtTime(f, t0 + i * .24); }
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(.2, t0 + .03); g.gain.setValueAtTime(.2, t0 + 1.38); g.gain.linearRampToValueAtTime(0, t0 + 1.46);
+    o.start(t0); o2.start(t0); o.stop(t0 + 1.5); o2.stop(t0 + 1.5);
+  } catch (e) { }
+}
+function revealMatch(L, key) {
+  const a = act(), q = qq(), M = S.match || { pairs: [], paired: {}, cards: {} }, pts = matchScore(M.pairs);
+  const tot = L.length, found = L.filter(p => M.paired[p.id]).length, pct = tot ? found / tot : 0, pc = Math.round(pct * 100);
+  if (!S.awarded[key]) {
+    const upd = {};
+    L.forEach(p => { const g = pts[p.id] || 0; upd[p.id] = { score: (p.score || 0) + g, last: { key, pts: g, ok: !!M.paired[p.id], mate: M.paired[p.id] || null, none: !M.paired[p.id] } }; });
+    S.awarded[key] = true; net.setPlayers(upd);
+  }
+  S.result = { ans: [], okSet: new Set(Object.keys(M.paired)), pts, extra: { found, tot, pairs: M.pairs.length, pct: pc }, n: tot };
+  publish({ result: { match: { found, tot, pairs: M.pairs.length, pct: pc } } });
+  Object.keys(M.paired).forEach(pid => R.react(pid, 'cheer', 4));
+  banner(`Fusion réussie à ${pc} %`, `${found} sur ${tot} ont trouvé leur miroir culturel`, 2300);
+  const revStep = S.step;
+  /* après le bandeau : la bulle des profs ne le chevauche pas */
+  later(2500, () => { if (S.step === revStep && S.phase === 'reveal') say(pct >= .7 ? LINES.matchGreat : pct >= .35 ? LINES.matchMid : LINES.matchBad); });
+  render();
+}
 
 /* ---------- révélation et points ---------- */
 function reveal() {
   if (cur().k !== 'q' || S.phase === 'reveal' || S.phase === 'scene') return;
   clearTimer(); stopBots(); S.phase = 'reveal';
   const a = act(), q = qq(), L = plist(), key = KEY();
+  if (a.type === 'match') return revealMatch(L, key);
   const ans = Object.entries(answers).filter(([pid]) => players[pid]).map(([pid, x]) => ({ pid, v: x.v, t: x.t || 0 })).sort((x, y) => x.t - y.t);
   const { pts, okSet, extra } = scoreRound(a.type, q, ans, pid => players[pid] && players[pid].team ? 1 : 0);
   if (!S.awarded[key]) {
     const upd = {};
-    L.forEach(p => { const g = pts[p.id] || 0; upd[p.id] = { score: (p.score || 0) + g, last: { key, pts: g, ok: okSet.has(p.id) || (a.type === 'fusion' && extra.success), none: !answers[p.id] } }; });
+    L.forEach(p => { const g = pts[p.id] || 0; upd[p.id] = { score: (p.score || 0) + g, last: { key, pts: g, ok: okSet.has(p.id), none: !answers[p.id] } }; });
     S.awarded[key] = true; net.setPlayers(upd);
   }
   S.result = { ans, okSet, pts, extra, n: L.length };
-  publish({ result: { fusion: extra.success ?? null, firsts: extra.firsts || null } });
+  publish({ result: { firsts: extra.firsts || null } });
   // réactions
-  if (a.type === 'corners' || a.type === 'fusion') R.setZones(true, q.ok);
+  if (a.type === 'corners') R.setZones(true, q.ok);
   if (a.type === 'line') R.setFlag(q.val);
-  ans.forEach(x => R.react(x.pid, (okSet.has(x.pid) || extra.success) ? 'cheer' : 'sad', 4));
+  ans.forEach(x => R.react(x.pid, okSet.has(x.pid) ? 'cheer' : 'sad', 4));
   if (a.type === 'race' && extra.firsts) extra.firsts.forEach((pid, i) => setTimeout(() => R.moveTo(pid, i ? 1.2 : -.4, -4.6, { face: 0 }), 600));
   // remarques des profs
   const pct = L.length ? okSet.size / L.length : 0;
   const revStep = S.step;
   /* première bonne réponse majoritaire : Philippe crie, saute bras levés, gros plan ; Mélanie rit */
-  const youhou = a.type !== 'fusion' && !S.youhouSaid && L.length > 0 && okSet.size / L.length > .5;
+  const youhou = !S.youhouSaid && L.length > 0 && okSet.size / L.length > .5;
   if (youhou) later(350, () => { if (S.step === revStep && S.phase === 'reveal') say(LINES.youhou); });
   later(1400, () => {
     if (S.step !== revStep || S.phase !== 'reveal') return;
-    if (a.type === 'fusion') { later(3400, () => { if (S.step === revStep) say(extra.success ? LINES.fusionOk : LINES.fusionKo); }); narrate(NARR.fusion(extra.success)); banner(extra.success ? 'Fusion réussie' : 'Fusion ratée', extra.success ? 'Stuttgart et Detroit ont trouvé la même réponse' : 'Les deux cultures n’ont pas convergé', 3600); return; }
     narrate(NARR.reveal(a, q, GAME.corners));
     if (!ans.length) { say(draw('none')); return; }
     const cat = pct >= .75 ? 'great' : pct >= .4 ? 'mid' : 'bad';
@@ -450,13 +537,14 @@ async function sayNext() {
   else {
     const P = PROFS[w];
     if (fx === 'youhou') { R.follow('P', 'face'); R.jump('P', 2.6); R.react('M', 'laugh', 4.5); }
+    else if (fx === 'sit') R.follow('P', 'face');
     else if (S.phase !== 'scene' && S.phase !== 'open') R.cam('profs');
     $('capN').innerHTML = `${esc(P.name)}<small>${esc(P.role)}</small>`; $('capT').textContent = t; $('cap').classList.add('on');
     R.talk(w, Math.max(2.5, t.length * .07));
     if (w === 'M' && /^Ha\b/.test(t)) R.react('M', 'laugh', Math.min(3.4, 1.3 + t.length * .03));   // elle rit, puis redevient sérieuse
   }
   said.push({ w, t, fx: fx || null, step: S.step, phase: S.phase, view: R.view });
-  await speakP(t, w, fx === 'youhou');
+  await speakP(t, w, fx === 'youhou' || fx === 'sit');
   if (tok !== sayTok) return;
   await new Promise(r => setTimeout(r, 250));
   if (tok === sayTok) sayNext();
@@ -584,6 +672,20 @@ function addBots(n = 12) {
 }
 function scheduleBots() {
   stopBots(); const st = cur(), key = KEY(), a = act(), q = qq(), T = (q.t || 20) * 1000;
+  if (a.type === 'match') {           // répétition : les joueurs fictifs cherchent leur binôme (et se trompent parfois)
+    bots.forEach(id => {
+      const tryIt = () => {
+        const M = S.match; if (KEY() !== key || S.phase !== 'open' || !M || M.paired[id] || !players[id]) return;
+        const others = Object.keys(M.cards).filter(p => p !== id && teamOf(p) !== teamOf(id) && !M.paired[p]);
+        const good = others.filter(p => M.cards[p] === M.cards[id]);
+        const target = good.length && Math.random() < .7 ? good[Math.floor(Math.random() * good.length)] : others[Math.floor(Math.random() * others.length)];
+        if (target) net.answer(key, id, target);
+        botTimers.push(setTimeout(tryIt, 5000 + Math.random() * 9000));
+      };
+      botTimers.push(setTimeout(tryIt, 4000 + Math.random() * Math.min(T * .6, 30000)));
+    });
+    return;
+  }
   bots.forEach(id => {
     if (!players[id]) return;
     const d = 1500 + Math.random() * Math.min(T * .8, 14000);
@@ -619,14 +721,24 @@ function renderBoard(show) {
 }
 function render() {
   renderHUD(); const st = cur(), lo = $('lower');
-  $('bNext').textContent = st.k === 'lobby' ? 'Commencer ▶' : st.k === 'q' && S.phase !== 'reveal' ? 'Révéler ▶' : st.k === 'final' ? 'Fin' : 'Suivant ▶';
+  $('bNext').textContent = st.k === 'lobby' ? 'Commencer ▶' : st.k === 'q' && S.phase === 'open' && act().type === 'match' ? 'Terminer ▶' : st.k === 'q' && S.phase !== 'reveal' ? 'Révéler ▶' : st.k === 'final' ? 'Fin' : 'Suivant ▶';
   $('brandSub').textContent = st.ai !== undefined ? `Activité ${st.ai + 1} sur ${GAME.acts.length} · ${act().name}` : 'Équipe Charlie · GIN761';
   $('ring').classList.toggle('on', !!S.timer || S.phase === 'closed');
   renderBoard(st.k === 'final');
   if (st.k === 'lobby') { renderLobby(); lo.classList.remove('on'); return setLowerH(); }
   let h = '';
   if (st.k === 'intro') { const a = act(); h = `<div class="kick">Activité ${st.ai + 1} sur ${GAME.acts.length} · ${esc(a.bloc)}</div><h2>${esc(a.name)}</h2><p class="rule">${esc(a.rule)}</p>`; }
-  if (st.k === 'q') {
+  if (st.k === 'q' && act().type === 'match') {
+    const a = act(), q = qq(), M = S.match || { pairs: [] }, R_ = S.phase === 'reveal' ? S.result : null, n = plist().length, nm = id => esc(players[id]?.name || '?');
+    h = `<div class="kick">${esc(a.name)} · ${R_ ? 'bilan' : S.phase === 'closed' ? 'temps écoulé : tout le monde s’assoit' : (q.t || 60) + ' secondes'}</div><h2>${R_ ? 'Fusion réussie à ' + R_.extra.pct + ' %' : esc(q.q)}</h2>`;
+    if (!R_) {
+      const last = M.pairs.slice(-8).reverse().map(p => `<span class="pair">${nm(p[0])} ⇄ ${nm(p[1])}</span>`).join('');
+      h += `<div class="row"><div class="stat"><small>Binômes formés</small><strong>${M.pairs.length}</strong></div><div class="stat"><small>Ont trouvé leur miroir</small><strong>${M.pairs.length * 2} sur ${n}</strong></div>${last ? `<div class="pairs">${last}</div>` : ''}</div>`;
+    } else {
+      h += `<div class="row"><span class="big">${R_.extra.pct} %</span><div class="stat"><small>Ont trouvé leur miroir culturel</small><strong>${R_.extra.found} sur ${R_.extra.tot}</strong></div><div class="stat"><small>Binômes formés</small><strong>${R_.extra.pairs}</strong></div></div>`;
+      h += `<div class="dims">${q.cards.map(c => `<div><b>${esc(c.dim)}</b><span>${esc(c.score)}</span><em>${esc(GAME.teams[0].name)} : ${esc(c.short[0])} · ${esc(GAME.teams[1].name)} : ${esc(c.short[1])}</em></div>`).join('')}</div><div class="why">${esc(q.why)}</div>`;
+    }
+  } else if (st.k === 'q') {
     const a = act(), q = qq(), n = plist().length, k = Object.keys(answers).length, R_ = S.phase === 'reveal' ? S.result : null;
     h = `<div class="kick">${esc(a.name)} · question ${st.qi + 1} sur ${a.qs.length}${S.phase === 'scene' ? ' · regardez la scène' : S.phase === 'closed' ? ' · temps écoulé' : ''}</div><h2>${esc(q.q)}</h2>`;
     if (q.opts) {
@@ -635,7 +747,6 @@ function render() {
     }
     if (a.type === 'standsit') { const v = Object.values(answers).filter(x => x.v === true).length; h += R_ ? `<div class="row"><span class="big">${q.ok ? 'Vrai' : 'Faux'}</span><div class="stat"><small>Debout (vrai)</small><strong>${v}</strong></div><div class="stat"><small>Assis (faux)</small><strong>${k - v}</strong></div></div>` : `<div class="row"><div class="stat"><small>Sur votre téléphone</small><strong>Vrai = debout · Faux = assis</strong></div></div>`; }
     if (a.type === 'line' && R_) { const vals = Object.values(answers).map(x => +x.v), avg = vals.length ? Math.round(vals.reduce((s, x) => s + x, 0) / vals.length) : 0; const best = R_.ans.slice().sort((x, y) => Math.abs(x.v - q.val) - Math.abs(y.v - q.val))[0]; h += `<div class="row"><span class="big">${q.val}</span><div class="stat"><small>Moyenne de la classe</small><strong>${avg}</strong></div>${best ? `<div class="stat"><small>Le plus proche</small><strong>${esc(players[best.pid]?.name)} · ${best.v}</strong></div>` : ''}</div>`; }
-    if (a.type === 'fusion' && R_) { const nm = i => i < 0 ? 'aucun vote' : GAME.corners[i].l; h += `<div class="row"><div class="stat"><small>Majorité ${esc(GAME.teams[0].name)}</small><strong>${nm(R_.extra.m0)}</strong></div><div class="stat"><small>Majorité ${esc(GAME.teams[1].name)}</small><strong>${nm(R_.extra.m1)}</strong></div><div class="stat"><small>Fusion</small><strong style="color:${R_.extra.success ? 'var(--ok)' : 'var(--de)'}">${R_.extra.success ? 'réussie' : 'ratée'}</strong></div></div>`; }
     if (S.phase !== 'reveal' && S.phase !== 'scene') h += `<div class="row"><div class="meter"><i style="width:${n ? k / n * 100 : 0}%"></i></div><span class="kick" style="color:var(--mut)">${k} sur ${n} ont répondu</span></div>`;
     if (R_) h += `<div class="why"><b>${a.type === 'line' ? 'Score : ' + q.val : q.opts ? 'Réponse ' + GAME.corners[q.ok].l : q.ok ? 'Vrai' : 'Faux'}.</b> ${esc(q.why)}</div>`;
   }
@@ -650,7 +761,7 @@ $('code').textContent = ROOM; $('url').textContent = joinURL.replace(/^https?:\/
 try { const qr = qrcode(0, 'M'); qr.addData(joinURL); qr.make(); $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); } catch (e) { $('qr').textContent = 'QR indisponible'; }
 
 /* ---------- contrôles ---------- */
-function next() { const st = cur(); if (st.k === 'q' && S.phase !== 'reveal') { if (S.phase === 'scene') return; reveal(); return; } if (st.k === 'final') return; go(S.step + 1); }
+function next() { const st = cur(); if (st.k === 'q' && S.phase !== 'reveal') { if (S.phase === 'scene') return; if (S.phase === 'open' && act().type === 'match') return endMatch(); reveal(); return; } if (st.k === 'final') return; go(S.step + 1); }
 $('bNext').onclick = next;
 /* « Babillage ! » (bouton rouge ou touche X) : Philippe coupe la parole, en gros plan.
    La voix en cours est mise en pause, pas coupée : elle reprend juste après, là où elle s'était arrêtée,
@@ -704,7 +815,7 @@ function flash(t) { banner(t, '', 1200); }
 let resetArm = 0;
 async function resetGame() {
   if (Date.now() - resetArm > 3000) { resetArm = Date.now(); flash('Nouvelle partie ? Appuyez encore sur N'); return; }
-  await net.clearRoom(); snapLast = ''; pubWorld(); S.gid = newGameId(); bots = []; S.awarded = {}; S.raceWinSaid = false; S.youhouSaid = false; S.claudeSaid = false; claudeQueued = false; decks = {}; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
+  await net.clearRoom(); snapLast = ''; pubWorld(); S.gid = newGameId(); bots = []; S.awarded = {}; S.raceWinSaid = false; S.match = null; S.youhouSaid = false; S.claudeSaid = false; claudeQueued = false; decks = {}; S.t0 = null; avatars.forEach((a, pid) => R.removePerson(pid)); avatars.clear(); seatTaken.clear(); go(0);
 }
 $('lobbyCols').addEventListener('click', e => { const b = e.target.closest('[data-kick]'); if (b) net.removePlayer(b.dataset.kick); });
 addEventListener('keydown', e => {
@@ -754,7 +865,7 @@ const pubWorld = () => { if (worldQ) return; worldQ = true; queueMicrotask(() =>
 }
 const hud = { arc: null, n: null, low: null, clock: null };
 function frame(now) {
-  const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
+  const raw = Math.max(0, (now - last) / 1000), dt = Math.min(.05, raw); last = now;
   /* chrono et horloge : le texte n'est réécrit que lorsqu'il change (une fois par seconde), pas à chaque image */
   if (S.timer) {
     S.timer.left -= Math.min(raw, 1); const l = Math.max(0, S.timer.left);
@@ -762,6 +873,10 @@ function frame(now) {
     if (off !== hud.arc) { hud.arc = off; $('arc').style.strokeDashoffset = off; }
     if (n !== hud.n) { hud.n = n; $('ringT').textContent = n; }
     if (low !== hud.low) { hud.low = low; $('ring').classList.toggle('low', low); }
+    if (S.match && S.phase === 'open' && cur().k === 'q' && act().type === 'match') {
+      if (!S.match.w30 && l <= 30 && S.timer.total > 35) { S.match.w30 = true; say(LINES.waitMatch); }
+      if (!S.match.w10 && l <= 10.5) { S.match.w10 = true; say(LINES.tenSec); }
+    }
     if (S.timer.left <= 0) closeQ();
   } else hud.arc = hud.n = hud.low = null;
   if (S.t0 !== null) {
@@ -774,7 +889,7 @@ function frame(now) {
 }
 net.onPlayers(v => { players = v || {}; syncAvatars(); renderHUD(); if (cur().k === 'lobby') renderLobby(); });
 go(0); requestAnimationFrame(t => { last = t; frame(t); });
-window.__host = { addBots, next, go, S, R, cur, q: qq, act, steps, start: startGame, babillage, babbling: () => babilOn, hush, say, voix: () => VOIX, audio: () => curAudio, said: () => said, quiet: () => !saying && !sayQ.length, started: () => started, players: () => players, answers: () => answers, publishSnap: () => publishSnap(performance.now(), true), reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
+window.__host = { addBots, next, go, S, R, cur, match: () => S.match, publishedKey: () => KEY(), q: qq, act, steps, start: startGame, babillage, babbling: () => babilOn, hush, say, voix: () => VOIX, audio: () => curAudio, said: () => said, quiet: () => !saying && !sayQ.length, started: () => started, players: () => players, answers: () => answers, publishSnap: () => publishSnap(performance.now(), true), reset: () => { resetArm = Date.now(); return resetGame(); }, snap: (n = 1, dt = .05) => { for (let i = 0; i < n; i++) R.tick(dt); return $('stage').toDataURL('image/jpeg', .85); } };
 </script>
 </body>
 </html>

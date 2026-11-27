@@ -77,6 +77,15 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 .av button{min-height:46px;padding:8px 18px;font-size:17px;background:var(--card);color:var(--ink);border:2px solid var(--edge)}
 .av button[aria-checked=true]{background:var(--acc);border-color:var(--acc);color:#111}
 .team{width:100%;padding:22px;border-radius:16px;background:var(--tc);color:#fff;text-align:center}
+.mc{border-left:5px solid var(--tc);background:var(--card);border-radius:0 14px 14px 0;padding:10px 14px;display:flex;flex-direction:column;gap:1px}
+.mc small{color:var(--mut);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.mc p{margin:0 0 6px;font-weight:600}
+.mc .play{font:700 20px/1.22 Barlow,sans-serif;color:#fff}
+.sug{display:flex;flex-wrap:wrap;gap:8px}
+.sug button{min-height:48px;padding:8px 16px;background:var(--card);color:var(--ink);border:2px solid var(--acc);font-size:18px}
+.sug button:disabled{opacity:.4;border-color:var(--edge)}
+.mmsg{margin:0;color:var(--mut);font-weight:600;font-size:15px;min-height:1.4em}
+.mmsg.ko{color:var(--ko)}
 .team strong{display:block;font:800 52px/1 "Barlow Condensed",sans-serif}
 .foot{color:var(--mut);font-size:13px;text-align:center;padding:0 16px 10px}
 </style>
@@ -87,11 +96,11 @@ input[type=range]{width:100%;height:56px;accent-color:var(--acc)}
 <main id="m"><div class="state"><p class="mut">Connexion…</p></div></main>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import { GAME } from './config.js?v=23';
-import { connect } from './net.js?v=23';
-import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=23';
-import { genreDuPrenom } from './prenoms.js?v=23';
-import { LOOK, genreDe, choisirTenue, tenue } from './avatars.js?v=23';
+import { GAME } from './config.js?v=24';
+import { connect } from './net.js?v=24';
+import { pruneSent, phoneMode, hash, sampleSnaps, makeClock } from './logic.js?v=24';
+import { genreDuPrenom } from './prenoms.js?v=24';
+import { LOOK, genreDe, choisirTenue, tenue } from './avatars.js?v=24';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const m = $('m');
@@ -121,7 +130,7 @@ async function start() {
   async function boot3d() {
     if (V || booting || !want3d) return; booting = true;
     try {
-      const mod = await import('./scene.js?v=23');
+      const mod = await import('./scene.js?v=24');
       V = makeView(mod);
     } catch (e) { console.warn('3D indisponible', e); want3d = false; }
     booting = false; render(); if (V) V.sync();
@@ -188,7 +197,7 @@ async function start() {
     R.cam('wide', true);
     let last = performance.now();
     const frame = t => {
-      const raw = (t - last) / 1000; last = t;
+      const raw = Math.max(0, (t - last) / 1000); last = t;
       step(); view();
       if (!document.hidden && document.body.classList.contains('s3d') && !window.__pause) R.tick(Math.min(.05, raw));
       requestAnimationFrame(frame);
@@ -262,7 +271,7 @@ async function start() {
     boot3d();
     const s = state, T = GAME.teams[team()], D = !!want3d;
     big(null);
-    const done = (html, split = false, c = '') => { layout(split); chip(D ? c : ''); m.innerHTML = html; };
+    const done = (html, split = false, c = '') => { layout(split); chip(D ? c : ''); m.innerHTML = html; m.dataset.mk = ''; };
     if (!s || s.kind === 'lobby') {
       if (D) return done(`<div class="card"><h2>Vous êtes dans la salle</h2><p class="mut">Votre équipe : <b style="color:${T.color}">${esc(T.name)}</b> · ${esc(T.tag)}. Regardez l’écran.</p></div>`, false, 'En attente du départ');
       return done(`<div class="state"><div class="team"><span>Vous jouez pour</span><strong>${esc(T.name)}</strong><span>${esc(T.tag)}</span></div><h2>Regardez l’écran, la partie va commencer.</h2><p class="mut">Gardez cette page ouverte.</p></div>`);
@@ -277,6 +286,7 @@ async function start() {
       return done(`<div class="state"><span class="kick">Résultat final</span><div class="mega">${r}<sup style="font-size:.4em">e</sup></div><h2>sur ${n} joueurs · ${me.score || 0} points</h2><div class="team"><span>Votre équipe</span><strong>${esc(T.name)}</strong></div><p class="mut">Merci d’avoir joué ! Regardez l’écran pour le résultat des équipes.</p></div>`);
     }
     const q = s.q, mine = sent[s.key];
+    if (q && q.type === 'match') return renderMatch(s, q, T, D, done);
     if (s.phase === 'scene') {
       if (D) return done(`<div class="card"><p class="mut">Regardez la scène. La question arrive juste après : soyez rapide !</p></div>`, false, 'Scène · Klaus et Mike');
       return done(`<div class="kick">${esc(s.act.name)}</div><div class="state"><span class="pill">Scène</span><h2>Regardez la scène à l’écran…</h2><p class="mut">La question arrive juste après. Soyez rapide !</p></div>`);
@@ -287,23 +297,21 @@ async function start() {
       const ans = q.type === 'line' ? Rv.val : q.type === 'standsit' ? (Rv.ok ? 'Vrai' : 'Faux') : GAME.corners[Rv.ok].l + ' · ' + q.opts[Rv.ok];
       const head = mine === undefined ? 'Pas de réponse' : good ? 'Bien joué' : 'Raté';
       if (D) {
-        done(`<div class="card"><p><b>${q.type === 'line' ? 'Score réel' : 'Réponse'} : ${esc(ans)}</b>${q.type === 'fusion' && s.result ? ` · ${s.result.fusion ? 'fusion réussie' : 'fusion ratée'}` : ''}</p></div>`, false, '');
+        done(`<div class="card"><p><b>${q.type === 'line' ? 'Score réel' : 'Réponse'} : ${esc(ans)}</b></p></div>`, false, '');
         big((mine === undefined ? '' : good ? '✓ ' : '✗ ') + head, L ? '+' + L.pts + ' pts' : '', mine === undefined ? '' : good ? 'ok' : 'ko'); return;
       }
       return done(`<div class="kick">${esc(s.act.name)}</div><div class="state"><div class="mega ${mine === undefined ? '' : good ? 'ok' : 'ko'}">${head}</div>
         <h2>${L ? '+' + L.pts + ' points' : 'Calcul des points…'}</h2>${mine !== undefined ? `<p class="mut">Votre réponse : ${esc(label(mine))}</p>` : ''}
-        ${q.type === 'fusion' && s.result ? `<span class="pill">${s.result.fusion ? 'Fusion réussie' : 'Fusion ratée'}</span>` : ''}
         <div class="why"><b>${q.type === 'line' ? 'Score réel' : 'Bonne réponse'} : ${esc(ans)}.</b> ${esc(Rv.why || '')}</div></div>`);
     }
     const mode = phoneMode(s, sent, me);
     if (mode === 'sent' || mode === 'closed' || mode === 'wait') {
-      if (D) return done(`<div class="card"><p class="mut">${q.type === 'fusion' ? 'Convainquez votre équipe… et l’autre !' : 'Votre avatar se place dans la salle.'}</p></div>`, false, mode === 'sent' ? '✓ Envoyé : ' + short(mine) : mode === 'closed' ? 'Temps écoulé' : 'Un instant…');
-      return done(`<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div><h2>${esc(q.text)}</h2><div class="state"><span class="pill">${mode === 'sent' ? 'Réponse envoyée' : mode === 'closed' ? 'Temps écoulé' : 'Un instant…'}</span>${mine !== undefined ? `<h2>${esc(label(mine))}</h2>` : ''}<p class="mut">${q.type === 'fusion' ? 'Convainquez votre équipe… et l’autre !' : 'Regardez votre avatar dans la salle.'}</p></div>`);
+      if (D) return done(`<div class="card"><p class="mut">Votre avatar se place dans la salle.</p></div>`, false, mode === 'sent' ? '✓ Envoyé : ' + short(mine) : mode === 'closed' ? 'Temps écoulé' : 'Un instant…');
+      return done(`<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div><h2>${esc(q.text)}</h2><div class="state"><span class="pill">${mode === 'sent' ? 'Réponse envoyée' : mode === 'closed' ? 'Temps écoulé' : 'Un instant…'}</span>${mine !== undefined ? `<h2>${esc(label(mine))}</h2>` : ''}<p class="mut">Regardez votre avatar dans la salle.</p></div>`);
     }
     let h = `${D ? '' : `<div class="kick">${esc(s.act.name)} · question ${q.idx + 1} sur ${q.n}</div>`}<h2>${esc(q.text)}</h2>`;
     if (q.opts) {
-      h += (q.type === 'fusion' ? '<p class="mut">Les deux équipes doivent voter pareil.</p>' : '') +
-        `<div class="grid">${q.opts.map((o, i) => `<button class="ans" data-v="${i}" style="--c:${GAME.corners[i].color}"><b>${GAME.corners[i].l}</b><span>${esc(o)}</span></button>`).join('')}</div>`;
+      h += `<div class="grid">${q.opts.map((o, i) => `<button class="ans" data-v="${i}" style="--c:${GAME.corners[i].color}"><b>${GAME.corners[i].l}</b><span>${esc(o)}</span></button>`).join('')}</div>`;
     } else if (q.type === 'standsit') {
       h += `<div class="vf"><button class="t" data-v="true">VRAI<small>votre avatar se lève</small></button><button class="f" data-v="false">FAUX<small>votre avatar reste assis</small></button></div>`;
     } else if (q.type === 'line') {
@@ -313,6 +321,65 @@ async function start() {
     m.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { const v = b.dataset.v; send(v === 'true' ? true : v === 'false' ? false : +v); });
     if ($('lr')) { $('lr').oninput = e => { lineVal = +e.target.value; $('lv').textContent = lineVal; $('lok').textContent = 'Valider ' + lineVal; }; $('lok').onclick = () => send(lineVal); }
   }
+  /* ---------- La fusion à l'aveugle : consigne secrète, prénom du binôme, retours du projecteur ---------- */
+  let lastMissT = 0, blockUntil = 0, pendingAt = 0;
+  const normN = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  function renderMatch(s, q, T, D, done) {
+    const A = GAME.acts[s.act.i], Q = A.qs[q.idx], M = s.match || {}, t = team(), k = M.cards ? M.cards[pid] : undefined;
+    const pair = (M.pairs || []).find(p => p[0] === pid || p[1] === pid), mate = pair ? (pair[0] === pid ? pair[1] : pair[0]) : null;
+    const nm = id => (players[id] && players[id].name) || '?';
+    if (s.phase === 'reveal') {
+      const L = me.last && me.last.key === s.key ? me.last : null, r = (s.result && s.result.match) || null, ok = L ? L.ok : !!mate;
+      const sub = ok ? `avec ${nm((L && L.mate) || mate)}${L ? ' · +' + L.pts + ' points' : ''}` : 'Ce sera pour la prochaine fusion.';
+      if (D) { done(`<div class="card"><p><b>${r ? `Fusion réussie à ${r.pct} %` : 'Bilan'}</b>${r ? ` · ${r.found} sur ${r.tot} ont trouvé leur miroir` : ''}</p></div>`, false, ''); big((ok ? '✓ Fusion réussie' : 'Pas de binôme'), ok && L ? '+' + L.pts + ' pts' : '', ok ? 'ok' : 'ko'); return; }
+      return done(`<div class="kick">${esc(A.name)} · bilan</div><div class="state"><div class="mega ${ok ? 'ok' : 'ko'}">${ok ? 'Fusion réussie' : 'Pas de binôme'}</div><h2>${esc(sub)}</h2>${r ? `<span class="pill">Fusion réussie à ${r.pct} % · ${r.found} sur ${r.tot}</span>` : ''}<div class="why">${esc(Q.why)}</div></div>`);
+    }
+    if (s.phase === 'closed') return done(`<div class="state"><div class="mega">Stop !</div><h2>Tout le monde s’assoit !</h2>${mate ? `<p class="mut">Vous avez fusionné avec ${esc(nm(mate))}.</p>` : ''}</div>`, false, 'Asseyez-vous');
+    if (k === undefined || !Q.cards || !Q.cards[k]) return done(`<div class="state"><span class="pill">Un instant…</span><p class="mut">Votre consigne secrète arrive.</p></div>`, false, 'Un instant…');
+    if (mate) { try { if (!m.dataset.ok) { m.dataset.ok = '1'; navigator.vibrate && navigator.vibrate([80, 60, 160]); } } catch (e) { }
+      return done(`<div class="state"><div class="mega ok">Fusion réussie</div><h2>avec ${esc(nm(mate))} !</h2><p class="mut">Restez ensemble jusqu’à l’alarme.</p></div>`, false, '✓ Binôme trouvé'); }
+    const C = Q.cards[k];
+    /* consigne et saisie construites une seule fois : les mises à jour du projecteur n'effacent pas ce qu'on tape
+       (reconstruites seulement au changement de question ou de vue 2D/3D, en gardant le texte tapé) */
+    layout(true); chip(D ? 'Fusion à l’aveugle · trouvez votre binôme' : '');
+    if (m.dataset.mk !== s.key || m.dataset.md !== String(D) || !$('mq')) {
+      const same = m.dataset.mk === s.key, typed = same && $('mq') ? $('mq').value : '';
+      m.innerHTML = `${D ? '' : `<div class="kick">${esc(A.name)}</div>`}<div class="mc"><small>Votre consigne secrète · ne la dites pas</small><p class="play">${esc(C.play[t])}</p><small>Trouvez</small><p>${esc(C.find[t])}</p></div>
+        <input type="text" id="mq" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="search" placeholder="Prénom de votre binôme">
+        <div id="msug" class="sug"></div><p id="mmsg" class="mmsg"></p>`;
+      if (!same) { m.dataset.ok = ''; lastMissT = (M.miss && M.miss[pid] && M.miss[pid].t) || 0; }
+      m.dataset.mk = s.key; m.dataset.md = String(D);
+      $('mq').value = typed; $('mq').oninput = () => { matchSug(); matchMsg(); };
+    }
+    matchSug(); matchMsg();
+  }
+  /* prénoms de l'autre équipe qui commencent par ce qui est tapé (sans tenir compte des accents) */
+  function matchSug() {
+    const box = $('msug'), inp = $('mq'); if (!box || !inp || !state) return;
+    const M = state.match || {}, taken = new Set((M.pairs || []).flat()), t = team(), v = normN(inp.value);
+    if (!v) { box.innerHTML = ''; return; }
+    const L = Object.entries(players).filter(([id, p]) => p && p.name && id !== pid && (p.team ? 1 : 0) !== t && normN(p.name).split(/[\s-]+/).concat(normN(p.name)).some(w => w.startsWith(v)))
+      .sort((a, b) => a[1].name.localeCompare(b[1].name)).slice(0, 6);
+    const off = Date.now() < blockUntil;
+    box.innerHTML = L.length ? L.map(([id, p]) => `<button type="button" data-p="${esc(id)}"${off || taken.has(id) ? ' disabled' : ''}>${esc(p.name)}${taken.has(id) ? ' · déjà pris' : ''}</button>`).join('')
+      : `<p class="mut" style="margin:0">Personne de ${esc(GAME.teams[1 - t].name)} ne s’appelle comme ça.</p>`;
+    box.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { if (Date.now() < blockUntil) return; pendingAt = Date.now(); net.answer(state.key, pid, b.dataset.p); box.querySelectorAll('button').forEach(x => x.disabled = true); matchMsg(); setTimeout(() => { matchSug(); matchMsg(); }, 4000); });
+  }
+  function matchMsg() {
+    const el = $('mmsg'); if (!el || !state) return;
+    const x = state.match && state.match.miss && state.match.miss[pid];
+    if (x && x.t !== lastMissT) {
+      lastMissT = x.t; pendingAt = 0; blockUntil = Date.now() + 3000;
+      try { navigator.vibrate && navigator.vibrate([60, 40, 60]); } catch (e) { }
+      setTimeout(() => { matchSug(); matchMsg(); }, 3100); matchSug();
+    }
+    const who = x && x.to && players[x.to] ? players[x.to].name : 'Cette personne';
+    const why = !x ? '' : x.why === 'carte' ? `Raté : ${who} n’a pas la même consigne que vous. Cherchez encore !` : x.why === 'pris' ? `${who} a déjà trouvé son binôme.` : x.why === 'equipe' ? `${who} est dans votre équipe : cherchez dans l’autre.` : 'Raté. Cherchez encore !';
+    const busy = pendingAt && Date.now() - pendingAt < 4000;
+    el.className = 'mmsg' + (x && !busy ? ' ko' : '');
+    el.textContent = busy ? 'Vérification…' : x ? why : 'Tapez les premières lettres de son prénom, puis touchez-le.';
+  }
+
   net.onPlayer(pid, v => { me = v; render(); });
   net.onPlayers(v => { players = v || {}; renderHead(); if (V) V.sync(); });
   net.onState(v => { if (v && v.gid) { const p = pruneSent(sent, v.gid); if (Object.keys(p).length !== Object.keys(sent).length) { sent = p; saveSent(); } } if (state && v && state.step !== v.step) lineVal = 50; const was = state && state.phase; state = v; if (v && v.phase === 'reveal' && was !== 'reveal') try { navigator.vibrate && navigator.vibrate(80); } catch (e) { } render(); if (V) V.sync(); });

@@ -71,18 +71,36 @@ test('points : course, +50 au premier juste de chaque équipe', () => {
   assert.deepEqual(r.extra.firsts, ['a', 'b']);
   assert.equal(r.pts.a, 200);
 });
-test('points : fusion réussie seulement si les deux équipes convergent', () => {
-  const ok = scoreRound('fusion', { ok: 1 }, [{ pid: 'a', v: 1 }, { pid: 'b', v: 1 }], team);
-  assert.equal(ok.extra.success, true); assert.equal(ok.pts.a, 150);
-  const ko = scoreRound('fusion', { ok: 1 }, [{ pid: 'a', v: 1 }, { pid: 'b', v: 3 }], team);
-  assert.equal(ko.extra.success, false); assert.equal(ko.pts.a, 50); assert.equal(ko.pts.b, 0);
+import { dealCards, cardForLate, matchCheck, pairsLeft, matchScore } from '../logic.js';
+test('fusion à l’aveugle : consignes réparties pareil dans les deux équipes, distribution identique partout', () => {
+  const list = []; for (let i = 0; i < 9; i++) list.push({ pid: 's' + i, team: 0 }, { pid: 'd' + i, team: 1 });
+  const c = dealCards(list, 3, 'partie1');
+  for (const t of ['s', 'd']) for (let k = 0; k < 3; k++) assert.equal(Object.keys(c).filter(p => p[0] === t && c[p] === k).length, 3, `équipe ${t}, consigne ${k}`);
+  assert.deepEqual(dealCards(list, 3, 'partie1'), c, 'même tirage sur le projecteur, à chaque fois');
+  const tm = p => p[0] === 'd' ? 1 : 0;
+  assert.equal(cardForLate({ s0: 0, s1: 1, d0: 0 }, tm, 0, 3), 2, 'retardataire : la consigne la moins donnée dans son équipe');
+});
+test('fusion à l’aveugle : un binôme = l’autre équipe et la même consigne ; chacun une seule fois', () => {
+  const tm = p => p[0] === 'd' ? 1 : 0, m = { cards: { s0: 0, s1: 1, s2: 0, d0: 0, d1: 1 }, paired: {} };
+  assert.equal(matchCheck(m, tm, 's0', 'd0'), 'ok');
+  assert.equal(matchCheck(m, tm, 's0', 'd1'), 'carte');
+  assert.equal(matchCheck(m, tm, 's0', 's2'), 'equipe');
+  assert.equal(matchCheck(m, tm, 's0', 's0'), 'soi');
+  assert.equal(matchCheck(m, tm, 's0', 'x9'), 'inconnu');
+  assert.equal(pairsLeft(m, tm, 2), 2);
+  m.paired = { s0: 'd0', d0: 's0' };
+  assert.equal(matchCheck(m, tm, 's2', 'd0'), 'pris', 'déjà en binôme avec quelqu’un d’autre');
+  assert.equal(matchCheck(m, tm, 's0', 'd1'), 'deja');
+  assert.equal(pairsLeft(m, tm, 2), 1, 'reste s1 et d1');
+  const pts = matchScore([['s0', 'd0'], ['s1', 'd1']]);
+  assert.equal(pts.s0, 150); assert.equal(pts.d0, 150); assert.equal(pts.s1, 125); assert.equal(pts.d1, 125); assert.equal(pts.s2, undefined);
 });
 
 test('configuration : questions cohérentes', () => {
   assert.equal(GAME.teams.length, 2);
   assert.equal(GAME.corners.length, 4);
   for (const a of GAME.acts) {
-    assert.ok(['corners', 'line', 'standsit', 'race', 'fusion'].includes(a.type), a.type);
+    assert.ok(['corners', 'line', 'standsit', 'race', 'match'].includes(a.type), a.type);
     assert.ok(a.name && a.rule, 'activité sans nom ou consigne');
     assert.ok(a.qs.length > 0);
     for (const q of a.qs) {
@@ -90,6 +108,11 @@ test('configuration : questions cohérentes', () => {
       assert.ok(q.t >= 5, 'temps trop court');
       if (a.type === 'line') assert.ok(q.val >= 0 && q.val <= 100, 'valeur de ligne hors 0-100');
       else if (a.type === 'standsit') assert.equal(typeof q.ok, 'boolean');
+      else if (a.type === 'match') {
+        assert.ok(q.cards.length >= 2, 'au moins deux consignes');
+        for (const c of q.cards) { assert.ok(c.dim && c.score, 'consigne sans dimension'); for (const k of ['play', 'find', 'short']) assert.equal(c[k].length, 2, `${c.dim} : ${k} pour les deux équipes`); }
+        assert.ok(q.why && q.t >= 30);
+      }
       else { assert.equal(q.opts.length, 4); assert.ok(Number.isInteger(q.ok) && q.ok >= 0 && q.ok < 4, 'bonne réponse hors A-D'); }
       if (a.type === 'race') assert.ok(Array.isArray(q.scene) && q.scene.length > 0, 'course sans scène');
     }
@@ -222,14 +245,15 @@ test('répliques : expressions de Philippe garanties à chaque partie, réserves
   const all = JSON.stringify(LINES);
   assert.ok(!/tabarnak/i.test(all), 'tabarnak remplacé par tabarouette');
   const count = (arr, re) => arr.filter(([, t]) => re.test(t)).length, tab = /Tabarouette/;
-  // moments toujours joués : consignes de la ligne et de la course, fin de la fusion (réussie ou ratée)
-  assert.ok(count(LINES.intro.line, tab) + count(LINES.intro.race, tab) + Math.min(count(LINES.fusionOk, tab), count(LINES.fusionKo, tab)) >= 3);
+  // moments toujours joués : consignes de la ligne, de la course et de la fusion à l'aveugle, bilan de la fusion (quel qu'il soit)
+  assert.ok(count(LINES.intro.line, tab) + count(LINES.intro.race, tab) + Math.min(count(LINES.matchGreat, tab), count(LINES.matchMid, tab), count(LINES.matchBad, tab)) >= 3);
+  assert.deepEqual(LINES.sitDown[0], ['P', 'Tout le monde s’assoit !', 'sit']);
   const nv = [...LINES.lobby, ...LINES.final].reduce((n, [w, t]) => n + (w === 'P' ? (t.match(/vilains étudiants/g) || []).length : 0), 0);
   assert.ok(nv >= 2, 'vilains étudiants au moins 2 fois');
   assert.equal(LINES.claude[0][0], 'P'); assert.match(LINES.claude[0][1], /CréH, arrête d’utiliser Claude/);
   assert.equal(LINES.youhou[0][0], 'P'); assert.equal(LINES.youhou[0][2], 'youhou'); assert.match(LINES.youhou[0][1], /^YOUHOU/);
   assert.equal(LINES.youhou[1][0], 'M'); assert.match(LINES.youhou[1][1], /^Ha ha/);
-  const nq = GAME.acts.filter(a => a.type !== 'fusion').reduce((n, a) => n + a.qs.length, 0);
+  const nq = GAME.acts.filter(a => a.type !== 'match').reduce((n, a) => n + a.qs.length, 0);
   for (const k of ['great', 'mid', 'bad']) {
     assert.ok(LINES[k].length >= nq, `${k} : ${LINES[k].length} échanges pour ${nq} questions`);
     assert.ok(LINES[k].some(ex => ex.some(([w, t]) => w === 'M' && /^Ha\b/.test(t))), 'Mélanie rit dans ' + k);

@@ -18,8 +18,7 @@ export const NARR = {
   welcome: 'Bienvenue dans Choc des cultures. Scannez le code à l’écran avec votre téléphone pour rejoindre la partie.',
   intro: (i, a) => `Activité ${i + 1} : ${a.name}. ${a.rule}`,
   question: (a, q) => (a.type === 'standsit' ? 'Vrai ou faux ? ' : '') + q.q,
-  reveal: (a, q, corners) => a.type === 'line' ? `Le score était de ${q.val}.` : a.type === 'standsit' ? `C’était ${q.ok ? 'vrai' : 'faux'}.` : a.type === 'fusion' ? null : `Bonne réponse : ${corners[q.ok].l}, ${q.opts[q.ok]}.`,
-  fusion: ok => ok ? 'Fusion réussie !' : 'Fusion ratée…',
+  reveal: (a, q, corners) => a.type === 'line' ? `Le score était de ${q.val}.` : a.type === 'standsit' ? `C’était ${q.ok ? 'vrai' : 'faux'}.` : a.type === 'match' ? null : `Bonne réponse : ${corners[q.ok].l}, ${q.opts[q.ok]}.`,
   final: (w, teams) => w < 0 ? 'Égalité parfaite ! La fusion est réussie.' : teams[w].name + ' remporte la partie !'
 };
 
@@ -36,12 +35,11 @@ export function allLines(GAME, LINES) {
       (q.scene || []).forEach(([w, t]) => add(w === 'k' ? 'k' : 'mi', t));
     });
   });
-  add('N', NARR.fusion(true)); add('N', NARR.fusion(false));
   [-1, 0, 1].forEach(w => add('N', NARR.final(w, GAME.teams)));
   pairs(LINES.lobby);
   Object.values(LINES.intro).forEach(pairs);
   ['lobbyMore', 'waiting', 'great', 'mid', 'bad', 'none'].forEach(k => (LINES[k] || []).forEach(pairs));
-  ['claude', 'waitFusion', 'youhou', 'babil', 'raceWin', 'fusionOk', 'fusionKo', 'final'].forEach(k => pairs(LINES[k] || []));
+  ['claude', 'waitMatch', 'tenSec', 'sitDown', 'youhou', 'babil', 'raceWin', 'matchGreat', 'matchMid', 'matchBad', 'final'].forEach(k => pairs(LINES[k] || []));
   const seen = new Set();
   return out.filter(l => { const k = keyFor(l.who, l.text); if (seen.has(k)) return false; seen.add(k); return true; });
 }

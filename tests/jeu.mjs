@@ -1,6 +1,8 @@
 // Partie complète jouée depuis deux téléphones, en touchant les vrais boutons, pour chaque type d'activité
-// (coins, vrai/faux debout-assis, ligne 0-100, course après la scène, fusion) : réponses reçues, révélation,
+// (coins, vrai/faux debout-assis, ligne 0-100, course après la scène, fusion à l'aveugle) : réponses reçues, révélation,
 // points identiques sur le téléphone et le projecteur, résultat final cohérent.
+// Fusion à l'aveugle : chaque téléphone affiche la consigne secrète de son équipe, Alice tape « Br » et touche Bruno,
+// le binôme est validé des deux côtés, puis alarme, « Tout le monde s'assoit ! » et bilan automatique.
 // Vérifie aussi les répliques des profs sur toute la partie : YOUHOU (gros plan, saut, rire de Mélanie)
 // à la première bonne réponse majoritaire, « Tabarouette » au moins 3 fois, « vilains étudiants » au moins 2 fois,
 // « CréH, arrête d'utiliser Claude » une fois, et aucune réplique répétée ; touche X (Babillage) pendant une scène.
@@ -39,10 +41,58 @@ try {
     }
     let v;
     if (q.type === 'standsit') v = String(good ? q.ok : !q.ok);
-    else if (q.type === 'fusion') v = '0';                         // fusion : les deux équipes votent pareil
     else v = String(good ? q.ok : (q.ok + 1) % q.opts.length);
     await wait(p, v => !!document.querySelector(`[data-v="${v}"]`), v);
     await p.click(`[data-v="${v}"]`);
+  };
+
+  /* fusion à l'aveugle jouée avec la vraie saisie : consigne secrète, suggestions de prénoms, validation par le projecteur */
+  const playMatch = async q => {
+    const tm = await host.evaluate(() => ({ pA: __host.players().pA.team ? 1 : 0, pB: __host.players().pB.team ? 1 : 0 }));
+    await check('fusion à l’aveugle : chaque téléphone affiche la consigne secrète de son équipe', async () => {
+      if (tm.pA === tm.pB) throw new Error('Alice et Bruno dans la même équipe');
+      const k = await host.evaluate(() => __host.match().cards);
+      if (k.pA === undefined || k.pA !== k.pB) throw new Error('consignes : ' + JSON.stringify(k));
+      for (const [p, id] of [[A, 'pA'], [B, 'pB']]) {
+        const want = q.cards[k[id]].play[tm[id]];
+        await wait(p, want => { const c = document.querySelector('.mc .play'); return c && c.textContent === want && !!document.getElementById('mq'); }, want, 20000);
+      }
+    });
+    await check('fusion à l’aveugle : le bouton 2D/3D garde la consigne et ce qui a été tapé', async () => {
+      await B.fill('#mq', 'Al');
+      await B.click('#tog'); await wait(B, () => !document.body.classList.contains('s3d') && document.getElementById('mq')?.value === 'Al' && !!document.querySelector('.mc .play'), null, 10000);
+      await B.click('#tog'); await wait(B, () => document.body.classList.contains('s3d') && document.getElementById('mq')?.value === 'Al' && !!document.querySelector('.mc .play'), null, 10000);
+      await B.fill('#mq', '');
+    });
+    await check('fusion à l’aveugle : un prénom inconnu ne propose personne', async () => {
+      await A.fill('#mq', 'Zz');
+      await wait(A, () => /ne s’appelle comme ça/.test(document.getElementById('msug').textContent), null, 5000);
+    });
+    await check('fusion à l’aveugle : Alice tape « Br », touche Bruno, le binôme est validé sur les deux téléphones', async () => {
+      await A.fill('#mq', 'Br');
+      await wait(A, () => { const b = document.querySelector('#msug [data-p="pB"]'); return b && !b.disabled && /Bruno/.test(b.textContent); }, null, 5000);
+      await A.click('#msug [data-p="pB"]');
+      await wait(host, () => (__host.match().pairs || []).length === 1, null, 15000);
+      for (const p of [A, B]) await wait(p, () => /Fusion réussie/.test(document.getElementById('m').innerText + ' ' + (document.getElementById('big')?.innerText || '')), null, 15000);
+    });
+    await check('fusion à l’aveugle : plus personne à trouver → alarme, « Tout le monde s’assoit ! » en gros plan, bilan automatique', async () => {
+      await wait(host, () => __host.said().some(x => x.fx === 'sit'), null, 20000);
+      const r = await host.evaluate(() => __host.said().find(x => x.fx === 'sit'));
+      if (r.w !== 'P' || r.t !== 'Tout le monde s’assoit !') throw new Error('mauvaise réplique : ' + r.t);
+      if (r.view.key !== 'follow' || r.view.follow.id !== 'P' || r.view.follow.mode !== 'face') throw new Error('pas de gros plan : ' + JSON.stringify(r.view));
+      const key = await host.evaluate(() => __host.publishedKey());
+      await wait(host, key => __host.S.phase === 'reveal' && __host.players().pA?.last?.key === key && __host.players().pB?.last?.key === key, key, 30000);
+    });
+    await check('fusion à l’aveugle : bilan identique sur les téléphones et le projecteur (100 %, +150 points chacun)', async () => {
+      for (const [p, id, mate] of [[A, 'pA', 'Bruno'], [B, 'pB', 'Alice']]) {
+        const last = await host.evaluate(id => __host.players()[id].last, id);
+        if (!last.ok || last.pts !== 150) throw new Error(`${id} : ${JSON.stringify(last)}`);
+        await wait(p, ({ pts, mate }) => { const t = document.getElementById('m').innerText + ' ' + (document.getElementById('big')?.innerText || ''); return /Fusion réussie à 100 %/.test(t) && t.includes(`+${pts} pts`) || (t.includes(mate) && t.includes(`+${pts}`)); }, { pts: last.pts, mate }, 15000);
+      }
+      const res = await host.evaluate(() => __host.S.result && __host.S.result.extra);
+      if (!res || res.pct !== 100 || res.found !== 2) throw new Error('résultat : ' + JSON.stringify(res));
+    });
+    await spoke(host, 'reveal'); await host.evaluate(() => __host.next()); await host.waitForTimeout(250);
   };
 
   let first = true, babil = false;
@@ -75,6 +125,7 @@ try {
     // question ouverte
     const q = await host.evaluate(() => { const st = __host.cur(); return { ...__host.q(), type: __host.act().type, label: `${__host.act().type} ${st.qi + 1}` }; });
     seen[q.type] = (seen[q.type] || 0) + 1;
+    if (q.type === 'match') { await playMatch(q); first = false; continue; }
     await host.evaluate(() => { if (__host.S.timer) __host.S.timer.left = 120; });   // machine de test lente : le chrono ne doit pas fermer la question
     const bothGood = first;                                                          // première question : tout le monde a juste → YOUHOU
     await check(`${q.label} : les deux téléphones répondent avec les boutons`, async () => {
@@ -99,14 +150,14 @@ try {
         const last = await host.evaluate(id => __host.players()[id].last, id);
         try { await wait(p, ({ ok, pts }) => { const t = document.getElementById('big').innerText; return t.includes(ok ? 'Bien joué' : 'Raté') && (!pts || t.includes(`+${pts} pts`)); }, last, 20000); }
         catch (e) { throw new Error(`${id} attend ${JSON.stringify(last)}, affiche « ${(await p.evaluate(() => document.getElementById('big').innerText + ' | ' + document.getElementById('m').innerText)).replace(/\s+/g, ' ').slice(0, 160)} »`); }
-        if (id === 'pA' && q.type !== 'fusion' && !(last.ok && last.pts > 0)) throw new Error('bonne réponse non récompensée : ' + JSON.stringify(last));
-        if (id === 'pB' && !bothGood && q.type !== 'fusion' && q.type !== 'line' && last.ok) throw new Error('mauvaise réponse comptée juste');
+        if (id === 'pA' && !(last.ok && last.pts > 0)) throw new Error('bonne réponse non récompensée : ' + JSON.stringify(last));
+        if (id === 'pB' && !bothGood && q.type !== 'line' && last.ok) throw new Error('mauvaise réponse comptée juste');
       }
     });
     first = false;
   }
-  await check('chaque type d’activité a été joué (coins, debout-assis, ligne, course, fusion)', async () => {
-    const miss = ['corners', 'standsit', 'line', 'race', 'fusion'].filter(t => !seen[t]);
+  await check('chaque type d’activité a été joué (coins, debout-assis, ligne, course, fusion à l’aveugle)', async () => {
+    const miss = ['corners', 'standsit', 'line', 'race', 'match'].filter(t => !seen[t]);
     if (miss.length) throw new Error('jamais joué : ' + miss.join(', '));
   });
   await check('résultat final : rang et points des téléphones = ceux du projecteur', async () => {

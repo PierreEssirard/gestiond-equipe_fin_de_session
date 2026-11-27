@@ -50,12 +50,7 @@ export function scoreRound(type, q, ans, teamOf) {
   const isOk = x => type === 'line' ? Math.abs(+x.v - q.val) <= 10 : x.v === q.ok;
   ans.forEach(x => { if (isOk(x)) okSet.add(x.pid); });
   if (type === 'line') ans.forEach(x => pts[x.pid] = Math.max(0, Math.round(150 - 3 * Math.abs(+x.v - q.val))));
-  else if (type === 'fusion') {
-    const maj = t => { const c = [0, 0, 0, 0]; ans.filter(x => teamOf(x.pid) === t).forEach(x => c[x.v]++); const m = Math.max(...c); return m ? c.indexOf(m) : -1; };
-    const m0 = maj(0), m1 = maj(1), success = m0 === q.ok && m1 === q.ok;
-    extra = { m0, m1, success };
-    ans.forEach(x => pts[x.pid] = success ? 150 : (x.v === q.ok ? 50 : 0));
-  } else {
+  else {
     const good = ans.filter(x => okSet.has(x.pid));
     good.forEach((x, i) => pts[x.pid] = 100 + Math.round(50 * (1 - i / Math.max(1, good.length))));
     if (type === 'race') {
@@ -64,6 +59,48 @@ export function scoreRound(type, q, ans, teamOf) {
     }
   }
   return { pts, okSet, extra };
+}
+
+/* ---------- La fusion à l'aveugle ----------
+   Chaque joueur reçoit une consigne secrète (un indice de q.cards) ; son binôme est quelqu'un de l'autre équipe
+   qui a la même consigne, donc le comportement opposé. m = { cards: {pid: indice}, paired: {pid: binôme} }. */
+/* consignes distribuées à tour de rôle dans chaque équipe : autant de chaque consigne des deux côtés */
+export function dealCards(list, n, seed) {
+  const out = {};
+  [0, 1].forEach(t => list.filter(p => (p.team ? 1 : 0) === t)
+    .sort((a, b) => (hash(a.pid + seed) - hash(b.pid + seed)) || (a.pid < b.pid ? -1 : 1))
+    .forEach((p, i) => { out[p.pid] = i % n; }));
+  return out;
+}
+/* joueur arrivé en cours de jeu : la consigne la moins distribuée dans son équipe */
+export function cardForLate(cards, teamOf, team, n) {
+  const c = new Array(n).fill(0);
+  Object.entries(cards).forEach(([pid, k]) => { if (teamOf(pid) === team) c[k]++; });
+  return c.indexOf(Math.min(...c));
+}
+/* a pense que b est son binôme : « ok », ou la raison de l'échec */
+export function matchCheck(m, teamOf, a, b) {
+  if (!b || !(b in m.cards) || !(a in m.cards)) return 'inconnu';
+  if (a === b) return 'soi';
+  if (m.paired[a]) return 'deja';
+  if (teamOf(a) === teamOf(b)) return 'equipe';
+  if (m.paired[b]) return 'pris';
+  return m.cards[a] === m.cards[b] ? 'ok' : 'carte';
+}
+/* binômes encore possibles (s'il n'en reste aucun, le jeu se termine tout de suite) */
+export function pairsLeft(m, teamOf, n) {
+  let k = 0;
+  for (let c = 0; c < n; c++) {
+    const free = t => Object.keys(m.cards).filter(p => m.cards[p] === c && !m.paired[p] && teamOf(p) === t).length;
+    k += Math.min(free(0), free(1));
+  }
+  return k;
+}
+/* points : 100 pour chaque joueur qui a trouvé son binôme, jusqu'à 50 de plus pour les premiers */
+export function matchScore(pairs) {
+  const pts = {};
+  pairs.forEach(([a, b], i) => { const g = 100 + Math.round(50 * (1 - i / Math.max(1, pairs.length))); pts[a] = g; pts[b] = g; });
+  return pts;
 }
 
 /* ---------- placements identiques sur le projecteur et les téléphones ----------
@@ -80,7 +117,7 @@ export function zoneSpot(zone, pid, key, r = .8) {
 export function lineSpot(v, pid, key, lineX, LINE_Z) {
   return { x: lineX(+v) + (rand(pid + key + 'x') - .5) * .3, z: LINE_Z - .35 + rand(pid + key + 'z') * .7, face: Math.PI };
 }
-/* attroupement devant le tableau (fusion) */
+/* attroupement devant le tableau (fusion à l'aveugle) */
 export function crowdSpot(pid, key) {
   return { x: -3.5 + rand(pid + key + 'cx') * 7, z: -3.4 - rand(pid + key + 'cz') * 1.2, face: 0, delay: rand(pid + key + 'cd') * 1.5 };
 }
